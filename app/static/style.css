@@ -683,11 +683,6 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
   padding-top: 8px; border-top: 1px solid var(--line-soft); color: #5f6f88;
 }
 .foot-brand { color: #8fa3bd; letter-spacing: .04em; }
-.foot-about {
-  border: 1px solid var(--line); background: transparent; color: var(--muted);
-  border-radius: 999px; padding: 1px 9px; font-size: 10.5px; cursor: pointer;
-}
-.foot-about:hover { color: var(--accent); border-color: rgba(56,189,248,.4); }
 .dot-sep { color: #2b3a52; }
 
 .about-card { width: min(620px, 96vw); }
@@ -1836,14 +1831,39 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
 .db-default-hint { max-width: 48%; }
 @media (max-width: 760px) { .db-default-hint { max-width: none; } }
 
-/* 页脚共享版权信息 */
-.foot-share {
-  color: #7dd3fc; text-decoration: none;
-  padding: 1px 6px; border-radius: 4px;
-  border: 1px solid rgba(56,189,248,.16);
-  background: rgba(56,189,248,.045);
-  font-size: 10.5px; white-space: nowrap;
+/* 页脚按钮：保留工具栏尺寸，但去掉边框与底色 */
+.foot-meta .btn {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
-.foot-share:hover { color: #bae6fd; border-color: rgba(56,189,248,.32); background: rgba(56,189,248,.09); }
-[data-theme="light"] .foot-share { color: #0369a1; border-color: #bae6fd; background: #eff8ff; }
-[data-theme="light"] .foot-share:hover { color: #075985; border-color: #7dd3fc; background: #e0f2fe; }
+.foot-meta .btn:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+}
+.foot-meta .btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+[data-theme="light"] .foot-meta .btn {
+  background: transparent;
+  border-color: transparent;
+}
+[data-theme="light"] .foot-meta .btn:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.foot-meta .btn { text-decoration: none; }
+
+/* 收费二维码说明（仅软件内展示） */
+.donate-payment-note {
+  max-width: 900px; margin: 0 auto 16px;
+  border: 1px solid rgba(251,191,36,.22);
+  background: rgba(251,191,36,.045);
+  border-radius: 11px; padding: 10px 14px;
+}
+.donate-payment-note b { display: block; font-size: 12px; color: #d97706; margin-bottom: 4px; }
+.donate-payment-note p { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+[data-theme="light"] .donate-payment-note { background: #fffbeb; border-color: #fde68a; }
+[data-theme="light"] .donate-payment-note b { color: #92400e; }

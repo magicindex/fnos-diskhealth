@@ -9,3 +9,5 @@ __pycache__/
 db_config.json
 .DS_Store
 docs/.DS_Store
+/diskhealth.fpk
+diskhealth.fpk.sha256

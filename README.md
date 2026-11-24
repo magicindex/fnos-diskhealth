@@ -326,11 +326,6 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 ![亮色主题](docs/light.png)
 
 
-## Gitea 仓库（本地连接）
-
-- Web：`http://192.168.3.200:3000/cyberzero/fnos-diskhealth`
-- SSH：`ssh://git@192.168.3.200:2223/cyberzero/fnos-diskhealth.git`
-- 仅内网访问；GitHub 公开仓库不包含本机连接信息。
 
 ## 版权与许可证
 
@@ -346,7 +341,6 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 - 完整许可证：[LICENSE](LICENSE)
 - 标准 GPL 全文：[COPYING](COPYING)
 - GitHub 源码：<https://github.com/magicindex/fnos-diskhealth>
-- Gitea 本地源码：<http://192.168.3.200:3000/cyberzero/fnos-diskhealth>
 - 应用内许可证入口：设置页底部「GPL-3.0 许可证说明」或 `/api/license`
 - 本程序不提供任何明示或默示担保
 - 随包 `perccli64` / `smartctl` 等第三方工具保留各自许可证

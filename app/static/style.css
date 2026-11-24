@@ -1835,3 +1835,15 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
 }
 .db-default-hint { max-width: 48%; }
 @media (max-width: 760px) { .db-default-hint { max-width: none; } }
+
+/* 页脚共享版权信息 */
+.foot-share {
+  color: #7dd3fc; text-decoration: none;
+  padding: 1px 6px; border-radius: 4px;
+  border: 1px solid rgba(56,189,248,.16);
+  background: rgba(56,189,248,.045);
+  font-size: 10.5px; white-space: nowrap;
+}
+.foot-share:hover { color: #bae6fd; border-color: rgba(56,189,248,.32); background: rgba(56,189,248,.09); }
+[data-theme="light"] .foot-share { color: #0369a1; border-color: #bae6fd; background: #eff8ff; }
+[data-theme="light"] .foot-share:hover { color: #075985; border-color: #7dd3fc; background: #e0f2fe; }

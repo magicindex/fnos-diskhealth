@@ -47,7 +47,7 @@
 
 ### 方式一：飞牛应用中心（FPK，推荐）
 
-仓库中已打包 `diskhealth.fpk`（1.10.6）。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
+仓库中已打包 `diskhealth.fpk`（1.10.7）。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
 
 ```bash
 fnos-cli app install-fpk diskhealth.fpk --volume-id 1 --yes
@@ -326,14 +326,34 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 ![亮色主题](docs/light.png)
 
 
+## Gitea 仓库（本地连接）
+
+- Web：`http://192.168.3.200:3000/cyberzero/fnos-diskhealth`
+- SSH：`ssh://git@192.168.3.200:2223/cyberzero/fnos-diskhealth.git`
+- 仅内网访问；GitHub 公开仓库不包含本机连接信息。
+
 ## 版权与许可证
 
 - 开发 / 版权：**cyberzero**
 - 页脚、设置页底部、关于弹窗统一显示 `© 2026 cyberzero`
-- 许可证：**GNU General Public License v3.0（GPL-3.0）**
-- 本程序是自由软件，可自由使用、修改和再分发；再分发时须遵守 GPL-3.0 条款并提供对应源码
+- 页脚开发者信息旁展示 **共享版权信息 · GPL-3.0**，可点击查看许可证
+- 许可证：**GNU General Public License v3.0 or later（GPL-3.0-or-later）**
+
+### GPL-3.0 分发与源码
+
+本项目原创代码以 **GPL-3.0-or-later** 分发，允许自由使用、修改和再分发；再分发二进制时须遵守 GPL-3.0 条款并提供对应源码。
+
+- 完整许可证：[LICENSE](LICENSE)
+- 标准 GPL 全文：[COPYING](COPYING)
+- GitHub 源码：<https://github.com/magicindex/fnos-diskhealth>
+- Gitea 本地源码：<http://192.168.3.200:3000/cyberzero/fnos-diskhealth>
+- 应用内许可证入口：设置页底部「GPL-3.0 许可证说明」或 `/api/license`
 - 本程序不提供任何明示或默示担保
-- 完整许可证说明见仓库根目录 [LICENSE](LICENSE)，应用内可通过设置页底部「GPL-3.0 许可证说明」或 `/api/license` 查看
+- 随包 `perccli64` / `smartctl` 等第三方工具保留各自许可证
+
+页脚共享版权信息：
+
+![页脚共享版权](docs/footer.png)
 
 
 ## 关于 / 版权版本
@@ -341,7 +361,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 页脚新增：
 
 - 应用名 `RAID 阵列健康`
-- 当前版本 `v1.10.6`
+- 当前版本 `v1.10.7`
 - `© 2026 cyberzero`
 - 「关于」入口
 
@@ -452,7 +472,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 | `AI_INSECURE_TLS` | `0` | AI 接口使用自签 HTTPS 时设为 `1` |
 | `AI_DATA_DIR` | 同 `DATA_DIR` | AI 配置与报告目录 |
 | `HISTORY_RETENTION_DAYS` | `180` | SQLite 历史保留天数 |
-| `APP_VERSION` | `1.10.6` | 页脚 / 关于弹窗显示的应用版本 |
+| `APP_VERSION` | `1.10.7` | 页脚 / 关于弹窗显示的应用版本 |
 | `APP_BUILD` | `2026-11-23` | 页脚 / 关于弹窗显示的构建日期 |
 
 `data/` 下会生成：
@@ -467,7 +487,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 
 ```
 disk-health/
-├── diskhealth.fpk       # 已打包的飞牛安装包（1.10.6）
+├── diskhealth.fpk       # 已打包的飞牛安装包（1.10.7）
 ├── fpk-src/             # FPK 源：manifest / ui/config / cmd / icons
 │   ├── manifest
 │   ├── app/             # 安装到 ${TRIM_APPDEST} 的代码与静态资源

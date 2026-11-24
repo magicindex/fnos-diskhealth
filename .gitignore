@@ -11,3 +11,5 @@ db_config.json
 docs/.DS_Store
 /diskhealth.fpk
 diskhealth.fpk.sha256
+/diskhealth-v*.fpk
+/diskhealth-v*.fpk.sha256

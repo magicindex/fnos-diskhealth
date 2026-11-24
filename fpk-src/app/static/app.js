@@ -694,6 +694,8 @@
       state.app = data.app || null;
       if (state.app?.version) {
         $("#app-version").textContent = state.app.version;
+        const brandVersion = $("#brand-version");
+        if (brandVersion) brandVersion.textContent = state.app.version;
       }
       $("#admin-open").hidden = !user.admin;
     } catch (error) {

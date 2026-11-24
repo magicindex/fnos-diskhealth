@@ -1,5 +1,5 @@
 appname               = diskhealth
-version               = 1.10.11
+version               = 1.10.12
 display_name          = RAID 阵列健康
 desc                  = HARDWARE RAID・ARRAY MONITOR — 硬件 RAID 卡物理盘健康与 SMART 监控，支持按 RAID 卡/盘位筛选和日志导出。复用 fnOS 统一登录，打开即用。
 platform              = x86

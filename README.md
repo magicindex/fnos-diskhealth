@@ -47,10 +47,10 @@
 
 ### 方式一：飞牛应用中心（FPK，推荐）
 
-安装包见 GitHub / Gitea 的 **v1.10.11 Releases** 附件 `diskhealth.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
+安装包见 GitHub / Gitea 的 **v1.10.12 Releases** 附件 `diskhealth-v1.10.12.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
 
 ```bash
-fnos-cli app install-fpk diskhealth.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.12.fpk --volume-id 1 --yes
 ```
 
 安装后从应用中心打开「RAID 阵列健康」。入口是 **`/app/diskhealth`**：fnOS 统一网关先校验登录态，再把请求转发到应用内的 Unix Socket，所以**打开即走 fnOS 登录，不需要在页面里再登录一次**。
@@ -355,7 +355,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 页脚新增：
 
 - 应用名 `RAID 阵列健康`
-- 当前版本 `v1.10.11`
+- 当前版本 `v1.10.12`
 - `© 2026 cyberzero`
 - 「关于」入口
 
@@ -466,7 +466,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 | `AI_INSECURE_TLS` | `0` | AI 接口使用自签 HTTPS 时设为 `1` |
 | `AI_DATA_DIR` | 同 `DATA_DIR` | AI 配置与报告目录 |
 | `HISTORY_RETENTION_DAYS` | `180` | SQLite 历史保留天数 |
-| `APP_VERSION` | `1.10.11` | 页脚 / 关于弹窗显示的应用版本 |
+| `APP_VERSION` | `1.10.12` | 页脚 / 关于弹窗显示的应用版本 |
 | `APP_BUILD` | `2026-11-23` | 页脚 / 关于弹窗显示的构建日期 |
 
 `data/` 下会生成：
@@ -481,7 +481,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 
 ```
 disk-health/
-├── diskhealth.fpk       # 本地打包产物，不提交仓库；见 Releases
+├── diskhealth-v1.10.12.fpk  # 本地打包产物，不提交仓库；见 Releases
 ├── fpk-src/             # FPK 源：manifest / ui/config / cmd / icons
 │   ├── manifest
 │   ├── app/             # 安装到 ${TRIM_APPDEST} 的代码与静态资源

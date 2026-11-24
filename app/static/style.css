@@ -1867,3 +1867,49 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
 .donate-payment-note p { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--muted); }
 [data-theme="light"] .donate-payment-note { background: #fffbeb; border-color: #fde68a; }
 [data-theme="light"] .donate-payment-note b { color: #92400e; }
+
+/* 顶栏图标组：与工具栏按钮同高、同边框 */
+.top-icon-group .icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.top-icon-group .top-gear {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.02);
+  color: var(--muted);
+}
+.top-icon-group .top-gear:hover {
+  color: var(--accent);
+  border-color: rgba(56,189,248,.45);
+  background: rgba(56,189,248,.06);
+}
+[data-theme="light"] .top-icon-group .top-gear {
+  background: #ffffff;
+  border-color: var(--line);
+}
+[data-theme="light"] .top-icon-group .top-gear:hover {
+  background: #f0f7ff;
+  border-color: #b8cee2;
+}
+@media (max-width: 620px) {
+  .top-icon-group .icon-btn { width: 34px; height: 34px; }
+}
+
+/* 顶栏版本号 */
+.brand-version {
+  display: inline-block; margin-left: 6px; padding: 1px 5px;
+  border: 1px solid var(--line-soft); border-radius: 4px;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+  color: var(--accent); background: rgba(56,189,248,.045);
+  vertical-align: 2px; letter-spacing: 0;
+}
+[data-theme="light"] .brand-version {
+  color: #0369a1; background: #eff8ff; border-color: #bae6fd;
+}
+@media (max-width: 620px) {
+  .brand-version { margin-left: 4px; font-size: 9px; padding: 0 4px; }
+}

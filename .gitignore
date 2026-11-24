@@ -1,0 +1,11 @@
+data/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
+.env.*
+.credentials*
+db_config.json
+.DS_Store
+docs/.DS_Store

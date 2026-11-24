@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>RAID 阵列健康 · HARDWARE RAID・ARRAY MONITOR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b6fb6'/%3E%3Crect x='4' y='4' width='24' height='24' rx='6' fill='%230b1422'/%3E%3Crect x='9' y='9' width='6' height='5' rx='1.5' fill='%2338bdf8'/%3E%3Crect x='17' y='9' width='6' height='5' rx='1.5' fill='%2334d399'/%3E%3Crect x='9' y='18' width='6' height='5' rx='1.5' fill='%2360a5fa'/%3E%3Crect x='17' y='18' width='6' height='5' rx='1.5' fill='%232dd4bf'/%3E%3C/svg%3E">
+<script src="static/theme.js"></script>
+<link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <div class="brand-text">
+      <h1>RAID 阵列健康</h1>
+      <p>HARDWARE RAID・ARRAY MONITOR</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <div class="meta">
+      <span class="meta-host" id="host">-</span>
+      <span class="meta-time">采集 <b id="updated">--:--:--</b></span>
+    </div>
+    <label class="switch" title="每 30 秒获取一次最新快照">
+      <input type="checkbox" id="auto" checked>
+      <span class="switch-track"><span class="switch-dot"></span></span>
+      <span class="switch-label">自动</span>
+    </label>
+    <button class="btn btn-ghost" id="refresh" type="button">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      刷新
+    </button>
+    <button class="btn btn-ghost" id="topology-open" type="button" title="存储拓扑">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="2" y="16" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg>
+      <span class="topology-btn-label">拓扑</span>
+    </button>
+    <button class="btn btn-ghost" id="trend-open" type="button" title="历史趋势">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 5-6"/></svg>
+      <span class="trend-btn-label">趋势</span>
+    </button>
+    <button class="btn btn-ai" id="ai-open" type="button" title="AI 故障分析">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 4.8L18.5 9.5l-4.8 1.7L12 16l-1.7-4.8L5.5 9.5l4.8-1.7L12 3z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/></svg>
+      <span class="ai-btn-label">AI 故障分析</span>
+    </button>
+    <div class="menu" id="export-menu">
+      <button class="btn btn-primary" id="export-btn" type="button" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        导出日志
+        <svg class="caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="menu-list" role="menu">
+        <button data-format="csv" type="button"><b>CSV</b><span>表格，可直接用 Excel 打开</span></button>
+        <button data-format="json" type="button"><b>JSON</b><span>完整结构化数据（含 SMART 属性）</span></button>
+        <button data-format="txt" type="button"><b>TXT</b><span>可读日志，含健康变化事件</span></button>
+        <div class="menu-hint">导出范围跟随当前筛选</div>
+      </div>
+    </div>
+    <div class="top-right-group">
+      <div class="top-icon-group">
+        <button class="icon-btn donate-btn" id="donate-open" type="button" title="请作者喝杯咖啡" aria-label="请作者喝杯咖啡">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M16 10h2a3 3 0 0 1 0 6h-2"/><path d="M7 3c0 1 1 1 1 2M11 3c0 1 1 1 1 2"/></svg>
+        </button>
+        <button class="icon-btn theme-toggle" id="theme-toggle" type="button" title="切换到亮色主题" aria-label="切换到亮色主题">
+          <svg class="theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5z"/></svg>
+          <svg class="theme-icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></svg>
+        </button>
+        <button class="icon-btn top-gear" id="admin-open" type="button" title="后台设置（仅管理员）" hidden>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.54a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.2.6.77 1 1.55 1H21a2 2 0 0 1 0 4h-.09c-.78 0-1.35.4-1.51 1z"/></svg>
+        </button>
+      </div>
+      <div class="user" id="user-pill" hidden title="fnOS 登录用户">
+        <span class="user-avatar" id="user-avatar">?</span>
+        <span class="user-text"><b id="user-name">…</b><small id="user-role">fnOS</small></span>
+        <button class="logout-btn" id="logout" type="button" title="退出登录" aria-label="退出登录">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  </div>
+  <div class="progress" id="progress"><span></span></div>
+</header>
+
+<main class="wrap">
+  <section class="kpis" id="kpis" aria-label="总览">
+    <div class="kpi" data-kpi="controllers"><span class="kpi-label">存储控制器</span><strong class="kpi-value">-</strong><span class="kpi-sub">RAID / HBA / 直连</span></div>
+    <div class="kpi" data-kpi="disks"><span class="kpi-label">物理硬盘</span><strong class="kpi-value">-</strong><span class="kpi-sub">全部盘位</span></div>
+    <div class="kpi is-ok" data-kpi="ok"><span class="kpi-label">正常</span><strong class="kpi-value">-</strong><span class="kpi-sub">健康</span></div>
+    <div class="kpi is-warn" data-kpi="warning"><span class="kpi-label">警告</span><strong class="kpi-value">-</strong><span class="kpi-sub">需关注</span></div>
+    <div class="kpi is-crit" data-kpi="critical"><span class="kpi-label">严重</span><strong class="kpi-value">-</strong><span class="kpi-sub">需处理</span></div>
+    <div class="kpi" data-kpi="vds"><span class="kpi-label">RAID 阵列</span><strong class="kpi-value">-</strong><span class="kpi-sub">正常 / 总数</span></div>
+    <div class="kpi-bar" id="kpi-bar" aria-hidden="true"></div>
+  </section>
+
+  <section class="banner" id="banner" hidden></section>
+
+  <section class="info-banner" id="other-info" hidden>
+    <span class="info-icon" aria-hidden="true">i</span>
+    <div class="info-content">
+      <div class="info-title">关于「其他错误」<span class="info-label">非介质错误</span></div>
+      <p class="info-text" id="other-info-text"></p>
+      <details class="info-details">
+        <summary>为什么不计入健康告警？</summary>
+        <p>其他错误（Other Error Count）是物理盘的非介质错误累计，可能包含 SMART 直通查询、SAS 链路、控制器轮询等异常。它不代表盘片表面损坏，也不等同于预测故障。</p>
+        <p>如果应用停止后计数不再增长，通常是监控轮询的副作用；如果计数持续跳增并伴随事件日志报错，再检查背板、SAS 线缆或控制器。</p>
+      </details>
+    </div>
+    <button class="info-close" id="other-info-close" type="button" aria-label="关闭提示">×</button>
+  </section>
+
+  <section class="filters" aria-label="筛选">
+    <div class="filter">
+      <label for="f-controller">RAID 卡 / 控制器</label>
+      <select id="f-controller"><option value="">全部控制器</option></select>
+    </div>
+    <div class="filter">
+      <label for="f-bay">盘位</label>
+      <select id="f-bay"><option value="">全部盘位</option></select>
+    </div>
+    <div class="filter">
+      <label for="f-health">健康状态</label>
+      <select id="f-health">
+        <option value="">全部状态</option>
+        <option value="ok">正常</option>
+        <option value="warning">警告</option>
+        <option value="critical">严重</option>
+        <option value="unknown">未知</option>
+      </select>
+    </div>
+    <div class="filter filter-search">
+      <label for="f-q">搜索</label>
+      <div class="search">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="f-q" type="search" placeholder="型号 / 序列号 / 盘位" autocomplete="off">
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-ghost btn-sm" id="clear" type="button">清空筛选</button>
+      <span class="result-count" id="result-count"></span>
+    </div>
+  </section>
+
+  <section class="controllers" id="controllers" aria-label="控制器"></section>
+
+  <section class="table-card">
+    <div class="table-head">
+      <h2>物理磁盘 <span class="count" id="table-count"></span></h2>
+      <span class="hint">点击行查看 SMART 明细</span>
+    </div>
+    <div class="table-wrap">
+      <table class="disk-table">
+        <thead>
+          <tr>
+            <th class="col-health">健康</th>
+            <th class="col-ctrl">控制器</th>
+            <th>盘位</th>
+            <th>型号</th>
+            <th class="col-serial">序列号</th>
+            <th class="col-size">容量</th>
+            <th class="col-if">接口</th>
+            <th class="col-state">状态</th>
+            <th class="col-temp">温度</th>
+            <th class="col-hours">通电</th>
+            <th class="col-err">介质错误</th>
+            <th class="col-other-err">其他错误 <span class="th-info" title="非介质错误：常由 SMART 直通轮询 / SAS 链路累计，不是盘片介质故障，不计入健康告警。">?</span></th>
+            <th class="col-raid">RAID</th>
+            <th class="col-expand"></th>
+          </tr>
+        </thead>
+        <tbody id="disk-body"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden>
+        <div class="empty-icon">◈</div>
+        <p id="empty-text">暂无数据</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="warnings" id="warnings" hidden>
+    <details>
+      <summary>采集警告 <span id="warn-count"></span></summary>
+      <ul id="warn-list"></ul>
+    </details>
+  </section>
+
+  <footer class="foot">
+    <div class="foot-main">
+      <span>数据源：perccli64（RAID 卡直通读取） + smartctl（SMART 属性）</span>
+      <span class="dot-sep">·</span>
+      <span>只读页面，不修改任何阵列配置</span>
+      <span class="dot-sep">·</span>
+      <span id="foot-interval">自动采集 -- 秒</span>
+    </div>
+    <div class="foot-meta">
+      <span class="foot-brand">RAID 阵列健康</span>
+      <span class="mono">v<span id="app-version">—</span></span>
+      <span>© 2026 cyberzero</span>
+      <button class="foot-about" id="about-open" type="button">关于</button>
+    </div>
+  </footer>
+</main>
+
+<div class="skeleton-screen" id="skeleton">
+  <div class="sk-head"></div>
+  <div class="sk-kpis"></div>
+  <div class="sk-table"></div>
+</div>
+
+
+<div class="modal" id="ai-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ai-title">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span class="ai-glyph">✦</span>
+        <div>
+          <h3 id="ai-title">AI 故障分析</h3>
+          <p>把磁盘健康与 SMART 数据交给 AI 诊断，支持 DeepSeek / OpenAI 兼容接口 / Claude / Ollama</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="ai-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="ai-toolbar">
+        <label class="ai-scope">分析范围
+          <select id="ai-scope">
+            <option value="issues">异常磁盘</option>
+            <option value="filtered">当前筛选</option>
+            <option value="all">全部磁盘</option>
+          </select>
+        </label>
+        <button class="btn btn-primary" id="ai-run" type="button">开始分析</button>
+        <span class="ai-status" id="ai-status"></span>
+      </div>
+
+      <div class="ai-result">
+        <div class="ai-empty" id="ai-empty">选择范围并点击「开始分析」。</div>
+        <div class="ai-report" id="ai-report" hidden></div>
+      </div>
+
+      <div class="ai-footer">
+        <span class="ai-meta" id="ai-meta"></span>
+        <div class="ai-exports">
+          <button class="btn btn-ghost btn-sm" data-ai-export="md" type="button" disabled>导出 MD</button>
+          <button class="btn btn-ghost btn-sm" data-ai-export="txt" type="button" disabled>导出 TXT</button>
+          <button class="btn btn-ghost btn-sm" data-ai-export="json" type="button" disabled>导出 JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal" id="admin-modal" hidden>
+  <div class="modal-card admin-card" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span class="ai-glyph admin-glyph">⚙</span>
+        <div>
+          <h3 id="admin-title">后台设置 <span class="admin-badge">仅管理员</span></h3>
+          <p>配置 AI 故障诊断接口与历史数据库路径。普通用户只能使用分析功能，看不到本页面与 API Key。</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="admin-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="ai-settings admin-settings">
+        <div class="ai-field"><label for="admin-provider">供应商</label><select id="admin-provider"></select></div>
+        <div class="ai-field"><label for="admin-base">接口地址</label><input id="admin-base" placeholder="https://api.deepseek.com/v1" autocomplete="off"></div>
+        <div class="ai-field"><label for="admin-model">模型</label><input id="admin-model" placeholder="deepseek-chat" autocomplete="off"></div>
+        <div class="ai-field ai-key-field">
+          <label for="admin-key">API Key <span class="key-state empty" id="admin-key-state">未配置</span></label>
+          <div class="key-input-wrap">
+            <input id="admin-key" type="password" placeholder="sk-..." autocomplete="new-password">
+            <button class="key-toggle" id="admin-key-toggle" type="button">显示</button>
+          </div>
+          <span class="ai-key-note">仅保存在 NAS 本地；留空表示不修改已保存的 Key。</span>
+        </div>
+        <div class="ai-advanced">
+          <div class="ai-field ai-field-temp">
+            <label for="admin-temp">温度 <span class="field-recommend">推荐 0.1–0.3</span></label>
+            <input id="admin-temp" type="number" min="0" max="2" step="0.1" value="0.2">
+            <span class="ai-field-help">越低越稳定、越可复现，适合故障诊断；过高会让结论发散、前后不一致。默认 0.2。</span>
+          </div>
+          <div class="ai-field ai-field-tokens">
+            <label for="admin-maxtokens">最大输出 token <span class="field-recommend">推荐 1800–3000</span></label>
+            <input id="admin-maxtokens" type="number" min="256" max="8192" step="128" value="1800">
+            <span class="ai-field-help">只限制单次回复长度，不是固定扣费；过短可能截断报告，过长会增加等待。常规 1800，复杂报告可调到 2500–3000。</span>
+          </div>
+        </div>
+        <label class="ai-check"><input type="checkbox" id="admin-redact" checked> 序列号脱敏后发送</label>
+        <label class="ai-check"><input type="checkbox" id="admin-clear-key"> 清除已保存的 Key</label>
+        <div class="ai-settings-actions">
+          <button class="btn btn-primary btn-sm" id="admin-save" type="button">保存设置</button>
+          <button class="btn btn-ghost btn-sm" id="admin-test" type="button">测试连接</button>
+          <span class="ai-hint" id="admin-hint">Key 仅保存在 NAS 本地。</span>
+          <span class="ai-hint" id="admin-status"></span>
+        </div>
+        <p class="ai-privacy">普通用户不可见本页面；分析内容会发送到所选 AI 服务商，默认脱敏序列号，报告仅保存在本机。</p>
+      </div>
+      <div class="db-settings">
+        <div class="db-settings-head">
+          <div>
+            <b>历史数据库</b>
+            <span>SQLite · history.db</span>
+          </div>
+          <div class="db-head-right">
+            <span class="db-status-text" id="db-status"></span>
+            <span class="db-state" id="db-state">正在读取…</span>
+          </div>
+        </div>
+        <div class="db-path-row">
+          <label class="db-path-field" for="admin-db-dir">
+            <span>数据库目录 <small>history.db 所在目录</small></span>
+            <input id="admin-db-dir" type="text" placeholder="/data" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="db-actions">
+            <button class="btn btn-primary btn-sm" id="db-save" type="button">保存路径</button>
+            <button class="btn btn-ghost btn-sm" id="db-refresh" type="button">刷新统计</button>
+          </div>
+        </div>
+        <div class="db-meta-row">
+          <div class="db-file-line"><span>实际文件</span><code id="db-file-path">—</code></div>
+          <span class="db-default-hint" id="db-default-hint">默认目录：—</span>
+        </div>
+        <div class="db-stats" id="db-stats">
+          <div class="db-stat"><span>数据量</span><b>—</b><small>条采样</small></div>
+          <div class="db-stat"><span>数据库体积</span><b>—</b><small>—</small></div>
+          <div class="db-stat"><span>覆盖范围</span><b>—</b><small>—</small></div>
+        </div>
+      </div>
+      <div class="admin-note">AI 配置与数据库路径仅管理员可读写：服务端会校验 fnOS 管理员 Header，普通用户即使构造请求也会被拒绝。</div>
+      <div class="admin-footer">
+        <div class="admin-copyright">
+          <span>RAID 阵列健康</span>
+          <span>© 2026 cyberzero · 保留所有权利</span>
+          <span class="license-badge">GPL-3.0</span>
+        </div>
+        <details class="license-box">
+          <summary>GPL-3.0 许可证说明</summary>
+          <p>本程序是自由软件，依据 GNU 通用公共许可证第 3 版（GPL-3.0）发布。你可以自由使用、修改和再分发；再分发时须遵守 GPL-3.0 条款并提供对应源码。</p>
+          <p>本程序不提供任何明示或默示担保，包括适销性和特定用途适用性。完整条款以 GPL-3.0 为准。</p>
+          <p><a href="api/license" target="_blank" rel="noopener">查看许可证文本</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU 官方 GPL-3.0 页面</a></p>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal" id="trend-modal" hidden>
+  <div class="modal-card trend-card" role="dialog" aria-modal="true" aria-labelledby="trend-title">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span class="ai-glyph trend-glyph">↗</span>
+        <div>
+          <h3 id="trend-title">历史趋势</h3>
+          <p>按盘查看温度、错误计数与 SMART 指标；默认最近 30 天，数据来自本地 SQLite。</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="trend-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="trend-tabs" role="tablist" aria-label="趋势视图">
+        <button class="trend-tab active" type="button" role="tab" aria-selected="true" data-trend-view="single">单盘趋势</button>
+        <button class="trend-tab" type="button" role="tab" aria-selected="false" data-trend-view="compare">同型号对比</button>
+      </div>
+      <div id="trend-single-view">
+        <div class="trend-toolbar">
+          <label class="trend-field">磁盘<select id="trend-disk"></select></label>
+          <label class="trend-field">指标<select id="trend-metric"></select></label>
+          <label class="trend-field">范围
+            <select id="trend-range">
+              <option value="7">最近 7 天</option>
+              <option value="30" selected>最近 30 天</option>
+              <option value="90">最近 90 天</option>
+            </select>
+          </label>
+          <button class="btn btn-ghost btn-sm" id="trend-export" type="button">导出 CSV</button>
+          <span class="trend-status" id="trend-status"></span>
+        </div>
+        <div class="trend-stats" id="trend-stats"></div>
+        <div class="trend-chart-wrap">
+          <canvas id="trend-canvas" height="320"></canvas>
+          <div class="trend-empty" id="trend-empty" hidden>暂无历史采样。应用运行后会每 120 秒记录一次，稍后再来查看。</div>
+          <div class="trend-tooltip" id="trend-tooltip" hidden></div>
+        </div>
+        <div class="trend-foot" id="trend-foot"></div>
+      </div>
+      <div id="trend-compare-view" hidden>
+        <div class="compare-toolbar">
+          <label class="trend-field">控制器<select id="compare-controller"><option value="">全部控制器</option></select></label>
+          <label class="trend-field">范围
+            <select id="compare-range">
+              <option value="7">最近 7 天</option>
+              <option value="30" selected>最近 30 天</option>
+              <option value="90">最近 90 天</option>
+            </select>
+          </label>
+          <button class="btn btn-ghost btn-sm" id="compare-refresh" type="button">刷新</button>
+          <span class="trend-status" id="compare-status"></span>
+        </div>
+        <div class="compare-summary" id="compare-summary"></div>
+        <div class="compare-groups" id="compare-groups"></div>
+        <div class="compare-foot">仅展示同一控制器下同型号且 ≥2 块的磁盘；数值取自本地 SQLite 历史快照，差异用于横向比较，不替代健康结论。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal" id="topology-modal" hidden>
+  <div class="modal-card topo-card" role="dialog" aria-modal="true" aria-labelledby="topology-title">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span class="ai-glyph topo-glyph">⌘</span>
+        <div>
+          <h3 id="topology-title">存储拓扑</h3>
+          <p>控制器 → 背板 / SAS 扩展器 → SES 槽位 → 物理磁盘；含多 RAID 卡与 JBOD 直通盘。</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="topology-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="topo-summary" id="topo-summary"></div>
+      <div class="topo-tree" id="topo-tree"></div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal" id="about-modal" hidden>
+  <div class="modal-card about-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
+    <div class="modal-head">
+      <div class="modal-title">
+        <span class="ai-glyph about-glyph">i</span>
+        <div>
+          <h3 id="about-title">关于</h3>
+          <p>版权与版本信息</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="about-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="about-hero">
+        <div class="about-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <h3>RAID 阵列健康</h3>
+        <p class="about-subtitle">HARDWARE RAID・ARRAY MONITOR</p>
+        <p class="about-tagline">洞察每一块磁盘 / Every Disk, Clearly Seen</p>
+      </div>
+      <div class="about-grid">
+        <div><span>版本</span><b id="about-version">—</b></div>
+        <div><span>构建</span><b id="about-build">—</b></div>
+        <div><span>许可证</span><b>GPL-3.0</b></div>
+      </div>
+      <div class="about-copy">
+        <p class="about-copyright">© 2026 cyberzero · 保留所有权利</p>
+        <p>面向 fnOS 的硬件 RAID / HBA 物理硬盘健康看板；数据来自 perccli64、smartctl 与 Linux SAS sysfs，只读采集，不修改阵列配置。</p>
+        <p>本程序依据 GNU General Public License v3.0（GPL-3.0）发布，可自由使用、修改与再分发；再分发时请遵守 GPL-3.0 条款并提供对应源码。</p>
+        <p>本应用与 Dell、Broadcom、飞牛官方无隶属关系。</p>
+      </div>
+      <div class="about-actions">
+        <button class="btn btn-primary btn-sm" id="about-done" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="static/app.js"></script>
+</body>
+</html>

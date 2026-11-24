@@ -1,0 +1,105 @@
+#!/bin/bash
+# RAID 阵列健康：fnOS 统一网关后端
+set -u
+
+APP_DIR="${TRIM_APPDEST:-}"
+VAR_DIR="${TRIM_PKGVAR:-/tmp/diskhealth}"
+DATA_DIR="${VAR_DIR}/data"
+SOCKET="${APP_DIR}/app.sock"
+PID_FILE="${VAR_DIR}/server.pid"
+LOG_FILE="${VAR_DIR}/server.log"
+PYTHON="/usr/bin/python3"
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG_FILE" 2>/dev/null
+}
+
+running_pid() {
+    [ -f "$PID_FILE" ] || return 1
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null)"
+    [ -n "$pid" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    grep -q "server.py" "/proc/${pid}/cmdline" 2>/dev/null || return 1
+    printf '%s' "$pid"
+}
+
+start_app() {
+    mkdir -p "$VAR_DIR" "$DATA_DIR" || exit 1
+    if [ -s "$LOG_FILE" ] && [ "$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)" -gt 2097152 ]; then
+        mv -f "$LOG_FILE" "${LOG_FILE}.1" 2>/dev/null || true
+    fi
+
+    local oldpid
+    if oldpid="$(running_pid)"; then
+        [ -S "$SOCKET" ] && exit 0
+        kill "$oldpid" 2>/dev/null || true
+        sleep 1
+    fi
+    rm -f "$SOCKET" "$PID_FILE"
+
+    if [ ! -x "$PYTHON" ]; then
+        log "python3 not found at $PYTHON"
+        exit 1
+    fi
+    if [ ! -f "$APP_DIR/server.py" ]; then
+        log "server.py not found in $APP_DIR"
+        exit 1
+    fi
+
+    cd "$APP_DIR" || exit 1
+    DISKHEALTH_GATEWAY_SOCKET="$SOCKET" \
+    APP_BASE_PATH="/app/diskhealth" \
+    AUTH_MODE="gateway" \
+    APP_VERSION="1.10.6" \
+    APP_BUILD="2026-11-23" \
+    DATA_DIR="$DATA_DIR" \
+    PERCCLI_PATH="$APP_DIR/bin/perccli64" \
+    SMARTCTL_PATH="/usr/sbin/smartctl" \
+    TZ="Asia/Shanghai" \
+    PYTHONUNBUFFERED=1 \
+    nohup "$PYTHON" "$APP_DIR/server.py" >>"$LOG_FILE" 2>&1 &
+    local pid=$!
+    echo "$pid" >"$PID_FILE"
+
+    local i
+    for i in $(seq 1 50); do
+        if [ -S "$SOCKET" ]; then
+            chmod 666 "$SOCKET" 2>/dev/null || true
+            exit 0
+        fi
+        sleep 0.2
+    done
+    log "server did not create socket: $SOCKET"
+    exit 1
+}
+
+stop_app() {
+    local pid
+    if pid="$(running_pid)"; then
+        kill "$pid" 2>/dev/null || true
+        local i
+        for i in $(seq 1 30); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.2
+        done
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+    rm -f "$SOCKET" "$PID_FILE"
+    return 0
+}
+
+status_app() {
+    if running_pid >/dev/null && [ -S "$SOCKET" ]; then
+        exit 0
+    fi
+    exit 3
+}
+
+case "${1:-}" in
+    start) start_app ;;
+    stop) stop_app; exit 0 ;;
+    status) status_app ;;
+    restart) stop_app; start_app ;;
+    *) exit 1 ;;
+esac

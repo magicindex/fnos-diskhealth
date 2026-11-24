@@ -1,0 +1,15 @@
+{
+  ".url": {
+    "diskhealth.Application": {
+      "title": "RAID 阵列健康",
+      "desc": "HARDWARE RAID・ARRAY MONITOR",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/diskhealth",
+      "gatewaySocket": "app.sock",
+      "url": "/app/diskhealth",
+      "allUsers": true
+    }
+  }
+}

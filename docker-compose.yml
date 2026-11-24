@@ -1,0 +1,26 @@
+services:
+  disk-health:
+    build: .
+    image: disk-health:1.0.0
+    container_name: disk-health
+    restart: unless-stopped
+    # 读取 RAID 卡物理盘与 SMART 需要访问 /dev/megaraid_sas_ioctl_node
+    privileged: true
+    # 共享宿主机 hostname，页面显示 fnOS 主机名而不是容器 ID
+    uts: host
+    # 容器内访问宿主机 fnOS Web 服务（登录态校验）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${DISK_HEALTH_PORT:-18089}:8080"
+    volumes:
+      - /dev:/dev
+      - ./data:/data
+    environment:
+      TZ: Asia/Shanghai
+      # 容器内访问 fnOS 的地址；如 fnOS 改过端口请同步修改
+      FNOS_BASE_URL: "http://host.docker.internal:5666"
+      # 浏览器访问的 fnOS 地址，默认按当前访问域名自动推导（:5666 / :5667）
+      # FNOS_PUBLIC_URL: "http://192.168.1.100:5666"
+      # 后台采集间隔（秒），页面每 30 秒读取一次快照
+      REFRESH_INTERVAL: "120"

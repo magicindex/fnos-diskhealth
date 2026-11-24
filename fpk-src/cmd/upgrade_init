@@ -1,0 +1,10 @@
+#!/bin/bash
+set -u
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "${TRIM_PKGVAR:-/tmp/diskhealth}/data" 2>/dev/null || true
+case "$(basename "$0")" in
+  install_callback|upgrade_callback|config_callback) "$APP_ROOT/cmd/main" start >/dev/null 2>&1 || true ;;
+  upgrade_init|uninstall_init) "$APP_ROOT/cmd/main" stop >/dev/null 2>&1 || true ;;
+  *) ;;
+esac
+exit 0

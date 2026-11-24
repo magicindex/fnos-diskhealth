@@ -1,0 +1,8 @@
+#!/bin/bash
+set -u
+case "$(basename "$0")" in
+  install_init|config_init) mkdir -p "${TRIM_PKGVAR:-/tmp/diskhealth}/data" 2>/dev/null || true; exit 0 ;;
+  upgrade_init|uninstall_init) "${TRIM_APPDEST:-/tmp}/cmd/main" stop >/dev/null 2>&1 || true; exit 0 ;;
+  upgrade_callback|config_callback) "${TRIM_APPDEST:-/tmp}/cmd/main" start >/dev/null 2>&1 || true; exit 0 ;;
+  *) exit 0 ;;
+esac

@@ -16,6 +16,7 @@ from typing import Any
 import health
 import history
 import inventory
+import mdraid
 import raid
 import smart
 from util import iso_now, natural_key, now, read_text, strip, to_int
@@ -77,6 +78,9 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
     direct_controllers, direct_warnings = inventory.collect(log)
     for warning in direct_warnings:
         log(warning)
+    md_controllers, md_warnings = mdraid.collect(log)
+    for warning in md_warnings:
+        log(warning)
 
     disks: list[dict[str, Any]] = []
 
@@ -108,6 +112,20 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
                 "HBA 直通盘" if controller["kind"] == "hba" else "直连磁盘"
             )
             disks.append(disk)
+
+    md_members: dict[str, list[dict[str, Any]]] = {}
+    for controller in md_controllers:
+        md_members.update(controller.pop("_member_map", {}) or {})
+    for disk in disks:
+        base = os.path.basename(str(disk.get("device") or ""))
+        if not base:
+            continue
+        arrays = md_members.get(base)
+        if arrays:
+            disk["md_arrays"] = arrays
+            disk["md_array"] = ", ".join(item.get("array") or "" for item in arrays)
+            disk["md_level"] = ", ".join(item.get("level") or "" for item in arrays)
+            disk["md_state"] = ", ".join(item.get("state") or "" for item in arrays)
 
     # 并行读取 SMART（不同控制器/磁盘互不阻塞）
     jobs: list[tuple[dict[str, Any], Any]] = []
@@ -217,13 +235,80 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
         controller["health_label"] = health.LEVEL_LABELS.get(controller["health"], "未知")
         if not controller_disks:
             log(f"{controller['model']}（{controller['id']}）未返回物理磁盘")
+        if controller.get("kind") == "raid":
+            # Hardware RAID cards only show their own virtual disks.
+            controller["md_members"] = []
+            continue
+        md_groups: dict[str, dict[str, Any]] = {}
+        for disk in controller_disks:
+            for array in disk.get("md_arrays") or []:
+                key = str(array.get("array") or "")
+                if not key:
+                    continue
+                group = md_groups.setdefault(key, {"array": key, "level": array.get("level") or "", "devices": []})
+                device = array.get("device") or disk.get("device") or ""
+                if device and device not in group["devices"]:
+                    group["devices"].append(device)
+        # Also map md arrays running on a hardware VD (e.g. /dev/sda1 -> /dev/sda).
+        for vd in controller.get("vds") or []:
+            base = os.path.basename(str(vd.get("os_device") or ""))
+            for array in md_members.get(base, []):
+                key = str(array.get("array") or "")
+                if not key:
+                    continue
+                group = md_groups.setdefault(key, {"array": key, "level": array.get("level") or "", "devices": []})
+                device = str(vd.get("os_device") or "")
+                if device and device not in group["devices"]:
+                    group["devices"].append(device)
+        controller["md_members"] = sorted(md_groups.values(), key=lambda item: item["array"])
+
+    # Mark VD locate availability: hardware VDs locate their member PDs;
+    # md arrays only when their members map to hardware VDs (NVMe has no PERC LED).
+    hardware_devices = {
+        os.path.basename(str(vd.get("os_device") or ""))
+        for controller in raid_controllers
+        for vd in controller.get("vds") or []
+        if vd.get("os_device")
+    }
+    for controller in raid_controllers:
+        for vd in controller.get("vds") or []:
+            vd["locatable"] = bool(vd.get("members") or vd.get("member_details"))
+    for controller in md_controllers:
+        for vd in controller.get("vds") or []:
+            bases = {str(item.get("base") or "") for item in vd.get("member_details") or []}
+            vd["locatable"] = bool(bases & hardware_devices)
+
+    md_info = {
+        vd.get("id"): vd
+        for controller in md_controllers
+        for vd in controller.get("vds") or []
+    }
+    for controller in raid_controllers + direct_controllers:
+        for group in controller.get("md_members") or []:
+            info = md_info.get(group.get("array")) or {}
+            for key in ("size", "health", "state", "state_label", "os_device", "locatable"):
+                if key in info:
+                    group[key] = info.get(key)
 
     summaries = {"ok": 0, "warning": 0, "critical": 0, "unknown": 0}
     for disk in disks:
         key = disk.get("health") if disk.get("health") in summaries else "unknown"
         summaries[key] += 1
 
+    for controller in md_controllers:
+        controller["health_label"] = health.LEVEL_LABELS.get(controller.get("health"), "未知")
+    visible_md_ids = {
+        group.get("array")
+        for controller in raid_controllers + direct_controllers
+        for group in controller.get("md_members") or []
+    }
     vds = [vd for controller in raid_controllers for vd in controller.get("vds") or []]
+    vds += [
+        vd
+        for controller in md_controllers
+        for vd in controller.get("vds") or []
+        if vd.get("id") in visible_md_ids
+    ]
     vd_optimal = sum(1 for vd in vds if vd.get("health") == "ok")
     topology = _build_topology(raid_controllers + direct_controllers, disks)
 
@@ -262,9 +347,11 @@ def _controller_order(controller_id: str | None) -> tuple[int, list[Any]]:
         return (0, natural_key(cid))
     if cid.startswith("hba"):
         return (1, natural_key(cid))
-    if cid.startswith("sata"):
+    if cid == "md":
         return (2, natural_key(cid))
-    return (3, natural_key(cid))
+    if cid.startswith("sata"):
+        return (3, natural_key(cid))
+    return (4, natural_key(cid))
 
 
 def _sort_disk(disk: dict[str, Any]) -> dict[str, Any]:
@@ -300,6 +387,11 @@ def _sort_disk(disk: dict[str, Any]) -> dict[str, Any]:
         "dg",
         "vd_id",
         "vd_level",
+        "rebuild_progress",
+        "md_array",
+        "md_level",
+        "md_state",
+        "locate",
         "temperature_c",
         "power_on_hours",
         "media_errors",
@@ -368,6 +460,9 @@ def _public_controller(controller: dict[str, Any]) -> dict[str, Any]:
         "disk_count",
         "vds",
         "warnings",
+        "filterable",
+        "topology",
+        "md_members",
     )
     data = {key: controller.get(key) for key in keys if key in controller}
     data["vds"] = [

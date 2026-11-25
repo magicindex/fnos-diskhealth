@@ -14,9 +14,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 import ai
+import audit
 import auth
+import console
 import export
 import history
+import locate
+import maintenance
+import raid
 import smart
 from collector import Monitor
 from util import decode_header_text
@@ -28,7 +33,7 @@ GATEWAY_SOCKET = os.environ.get("DISKHEALTH_GATEWAY_SOCKET", "").strip()
 APP_BASE_PATH = os.environ.get("APP_BASE_PATH", "").strip().rstrip("/")
 AUTH_MODE = os.environ.get("AUTH_MODE", "cookie").strip().lower()
 GATEWAY_MODE = AUTH_MODE == "gateway" or bool(GATEWAY_SOCKET)
-APP_VERSION = os.environ.get("APP_VERSION", "1.10.11").strip() or "1.10.11"
+APP_VERSION = os.environ.get("APP_VERSION", "1.10.32").strip() or "1.10.32"
 APP_BUILD = os.environ.get("APP_BUILD", "2026-11-23").strip() or "2026-11-23"
 APP_NAME = "RAID 阵列健康"
 APP_SUBTITLE = "HARDWARE RAID・ARRAY MONITOR"
@@ -143,6 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         if not uid:
             return None
         username = decode_header_text(self.headers.get("X-Trim-Username"))
+        username = audit.resolve_user(uid, username)
         return {
             "uid": uid,
             "username": username or f"用户 {uid}",
@@ -326,6 +332,30 @@ class Handler(BaseHTTPRequestHandler):
                 if self._require_user(api=False) is None:
                     return
                 return self._static("donate.html")
+            if path in ("/console", "/console.html"):
+                user = self._require_user(api=False)
+                if user is None:
+                    return
+                if not bool(user.get("admin")):
+                    audit.record(user, "console.page.view", result="denied", detail="non-admin")
+                    return self._error_html("页面不存在", "未找到该页面。", "", 404)
+                return self._static("console.html")
+            if path in ("/logs", "/logs.html"):
+                if self._require_user(api=False) is None:
+                    return
+                return self._static("logs.html")
+            if path in ("/audit", "/audit.html"):
+                user = self._require_user(api=False)
+                if user is None:
+                    return
+                if not bool(user.get("admin")):
+                    audit.record(user, "audit.page.view", result="denied", detail="non-admin")
+                    return self._error_html("页面不存在", "未找到该页面。", "", 404)
+                self.send_response(HTTPStatus.FOUND)
+                self.send_header("Location", f"{APP_BASE_PATH}/logs?tab=audit" if APP_BASE_PATH else "/logs?tab=audit")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
 
             if self._require_user(api=path.startswith("/api/")) is None:
                 return
@@ -406,6 +436,75 @@ class Handler(BaseHTTPRequestHandler):
                 )
             if path == "/api/ai/status":
                 return self._json(ai.status())
+            if path == "/api/raid/maintenance":
+                user = self.user or {}
+                if not bool(user.get("admin")):
+                    audit.record(user, "raid.maintenance.read", target="rebuild/foreign/locate", result="denied", detail="non-admin")
+                    return self._json({"error": "需要 fnOS 管理员权限"}, HTTPStatus.FORBIDDEN)
+                data = maintenance.collect(monitor.get_snapshot())
+                audit.record(
+                    user,
+                    "raid.maintenance.read",
+                    target="rebuild/foreign/locate",
+                    result="ok",
+                    detail=(
+                        f"controllers={len(data.get('controllers') or [])};"
+                        f"rebuilds={len(data.get('rebuilds') or [])};"
+                        f"foreign={len(data.get('foreign') or [])};"
+                        f"locate={len(data.get('locate') or [])}"
+                    ),
+                )
+                data["audit"] = audit.recent(8)
+                return self._json(data)
+            if path == "/api/admin/audit":
+                user = self.user or {}
+                if not bool(user.get("admin")):
+                    audit.record(user, "audit.query", result="denied", detail="non-admin")
+                    return self._json({"error": "需要 fnOS 管理员权限"}, HTTPStatus.FORBIDDEN)
+                try:
+                    limit = int((query.get("limit") or ["50"])[0] or 50)
+                    offset = int((query.get("offset") or ["0"])[0] or 0)
+                except ValueError:
+                    limit, offset = 50, 0
+                result = audit.query(
+                    limit=limit,
+                    offset=offset,
+                    user=(query.get("user") or [""])[0],
+                    action=(query.get("action") or [""])[0],
+                    result=(query.get("result") or [""])[0],
+                    keyword=(query.get("q") or [""])[0],
+                    date_from=(query.get("from") or [""])[0],
+                    date_to=(query.get("to") or [""])[0],
+                )
+                audit.record(
+                    user,
+                    "audit.query",
+                    target="audit-log",
+                    result="ok",
+                    detail=f"total={result.get('total')};offset={offset};limit={limit}",
+                )
+                return self._json(result)
+            if path == "/api/admin/locate/status":
+                if self._require_admin() is None:
+                    return
+                return self._json({"items": locate.status(), "auto_stop_seconds": locate.AUTO_STOP_SECONDS})
+            if path == "/api/console/state":
+                if self._require_user(api=True) is None:
+                    return
+                if self._require_admin() is None:
+                    return
+                token = self.headers.get("X-Console-Token") or ""
+                return self._json(console.state(token, self.user))
+            if path == "/api/console/inventory":
+                if self._require_user(api=True) is None:
+                    return
+                if self._require_admin() is None:
+                    return
+                token = self.headers.get("X-Console-Token") or ""
+                if not console.check(token, self.user):
+                    return self._json({"error": "控制台未登录或会话已过期"}, HTTPStatus.UNAUTHORIZED)
+                snapshot = monitor.get_snapshot() or {}
+                return self._json(console.public_inventory(snapshot))
             if path == "/api/admin/ai":
                 if self._require_admin() is None:
                     return
@@ -466,6 +565,99 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     body = self._json_body()
                     return self._json(history.set_directory(str(body.get("directory") or "")))
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+            if path == "/api/admin/locate":
+                if self._require_user(api=True) is None:
+                    return
+                user = self.user or {}
+                if not bool(user.get("admin")):
+                    audit.record(user, "raid.locate", result="denied", detail="non-admin")
+                    return self._json({"error": "需要 fnOS 管理员权限"}, HTTPStatus.FORBIDDEN)
+                try:
+                    body = self._json_body()
+                    target = str(body.get("target") or body.get("disk_id") or "")
+                    action = str(body.get("action") or "")
+                    confirm = str(body.get("confirm") or "")
+                    if action == "on" and confirm != "LOCATE":
+                        audit.record(user, "raid.locate.start", target=target, result="denied", detail="confirm mismatch")
+                        return self._json({"error": "二次确认失败：请输入 LOCATE"}, 400)
+                    if action == "off" and confirm not in ("STOP", "LOCATE"):
+                        return self._json({"error": "停止定位需要 confirm=STOP"}, 400)
+                    if action not in ("on", "off"):
+                        return self._json({"error": "action 必须是 on 或 off"}, 400)
+                    snapshot = monitor.get_snapshot() or {}
+                    if action == "on":
+                        info = locate.start(snapshot, target, user)
+                        audit.record(user, "raid.locate.start", target=info.get("label") or target, result="ok", detail="auto_stop=30s")
+                    else:
+                        info = locate.stop(target, user)
+                        audit.record(user, "raid.locate.stop", target=info.get("label") or target, result="ok")
+                    return self._json({"ok": True, "auto_stop_seconds": locate.AUTO_STOP_SECONDS, **info})
+                except locate.LocateError as exc:
+                    audit.record(user, f"raid.locate.{action or 'unknown'}", target=target, result="failed", detail=exc.message)
+                    return self._json({"error": exc.message}, exc.status)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+            if path == "/api/console/setup":
+                if self._require_user(api=True) is None:
+                    return
+                user = self.user or {}
+                if not bool(user.get("admin")):
+                    return self._json({"error": "需要 fnOS 管理员权限"}, HTTPStatus.FORBIDDEN)
+                try:
+                    body = self._json_body()
+                    console.setup(body.get("words"))
+                    audit.record(user, "console.setup", target="security-code", result="ok")
+                    return self._json({"ok": True, "configured": True})
+                except console.ConsoleError as exc:
+                    return self._json({"error": exc.message}, exc.status)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+            if path == "/api/console/login":
+                if self._require_user(api=True) is None:
+                    return
+                user = self.user or {}
+                if not bool(user.get("admin")):
+                    return self._json({"error": "需要 fnOS 管理员权限"}, HTTPStatus.FORBIDDEN)
+                try:
+                    body = self._json_body()
+                    token = console.login(body.get("words"), user)
+                    audit.record(user, "console.login", target="console", result="ok")
+                    return self._json({"ok": True, "token": token, "expires_in": console.TOKEN_TTL})
+                except console.ConsoleError as exc:
+                    audit.record(user, "console.login", target="console", result="denied", detail=exc.message)
+                    return self._json({"error": exc.message}, exc.status)
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+            if path == "/api/console/logout":
+                if self._require_user(api=True) is None:
+                    return
+                if self._require_admin() is None:
+                    return
+                console.logout(self.headers.get("X-Console-Token") or "")
+                return self._json({"ok": True})
+            if path == "/api/console/op":
+                if self._require_user(api=True) is None:
+                    return
+                if self._require_admin() is None:
+                    return
+                user = self.user or {}
+                token = self.headers.get("X-Console-Token") or ""
+                if not console.check(token, user):
+                    return self._json({"error": "控制台未登录或会话已过期"}, HTTPStatus.UNAUTHORIZED)
+                try:
+                    body = self._json_body()
+                    op = str(body.get("op") or "")
+                    payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
+                    snapshot = monitor.get_snapshot() or {}
+                    result = console.run_op(snapshot, op, payload)
+                    audit.record(user, f"console.{op}", target=result.get("command") or op, result="ok", detail=(result.get("output") or "")[-300:])
+                    monitor.request_refresh()
+                    return self._json(result)
+                except console.ConsoleError as exc:
+                    audit.record(user, f"console.{op if 'op' in locals() else 'unknown'}", target="console", result="failed", detail=exc.message)
+                    return self._json({"error": exc.message}, exc.status)
                 except ValueError as exc:
                     return self._json({"error": str(exc)}, 400)
             if path.startswith("/api/admin/ai"):
@@ -586,7 +778,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not found"}, 404)
         with open(path, "rb") as fh:
             body = fh.read()
-        if safe in ("index.html", "donate.html") and APP_BASE_PATH:
+        if safe in ("index.html", "donate.html", "logs.html", "console.html") and APP_BASE_PATH:
             body = body.replace(b'<base href="/">', f'<base href="{APP_BASE_PATH}/">'.encode("utf-8"), 1)
         ext = os.path.splitext(safe)[1].lower()
         self._bytes(body, MIME.get(ext, "application/octet-stream"))

@@ -22,8 +22,11 @@
     user: null,
     app: null,
     ai: { status: null, report: null, busy: false, admin: null },
+    adminDb: null,
+    maintenance: null,
     trend: { diskId: "", metric: "temperature_c", days: 30, data: null, geom: null, loading: false, view: "single" },
     compare: { days: 30, controller: "", data: null, loading: false },
+    locate: null,
     topo: { controller: "" },
   };
 
@@ -133,7 +136,7 @@
     renderTable();
     renderWarnings(data);
     const interval = data.refresh_interval || 120;
-    $("#foot-interval").textContent = `自动采集 ${interval} 秒`;
+    $("#foot-interval").textContent = `Auto-refresh ${interval}s`;
   }
 
   function updateMeta() {
@@ -374,6 +377,18 @@
       const otherCell = otherErrors === null || otherErrors === undefined
         ? `<span class="dash">—</span>`
         : `<span class="other-count ${otherErrors > 0 ? "has-info" : ""}" title="非介质错误：常由 SMART 直通轮询 / SAS 链路累计，不是盘片介质故障，不计入健康告警。">${num(otherErrors)}</span>`;
+      const locateRaw = String(disk.locate || "").toLowerCase();
+      const locateOn = ["on", "yes", "1", "true"].includes(locateRaw);
+      const locateLabel = disk.locate ? (locateOn ? "On" : "Off") : "—";
+      const locateCell = state.user?.admin
+        ? `<button class="locate-toggle ${locateOn ? "on" : ""}" type="button" data-locate-id="${esc(disk.id)}" data-locate-action="${locateOn ? "off" : "on"}" title="${locateOn ? "关闭定位灯" : "开启定位灯"}"><span class="locate-dot"></span><span>${esc(locateLabel)}</span></button>`
+        : `<span class="locate-state ${locateOn ? "on" : ""}">${esc(locateLabel)}</span>`;
+      const rebuildProgress = String(disk.rebuild_progress || "").trim();
+      const rebuildCell = rebuildProgress
+        ? `<span class="rebuild-progress-text" title="${esc(rebuildProgress)}">${esc(rebuildProgress)}</span>`
+        : disk.state === "Rbld"
+          ? `<span class="rebuild-progress-text">重建中</span>`
+          : `<span class="dash">—</span>`;
       const raidText = disk.vd_id
         ? `<span class="chip">${esc(disk.vd_level || "RAID")}</span>${disk.dg !== null && disk.dg !== undefined ? `<small class="mono"> DG${esc(disk.dg)}</small>` : ""}`
         : `<span class="dash">—</span>`;
@@ -393,12 +408,14 @@
           <td class="col-hours"><span class="mono" title="${disk.power_on_hours ?? ""} 小时">${powerOn(disk.power_on_hours)}</span></td>
           <td class="col-err">${errCell}</td>
           <td class="col-other-err">${otherCell}</td>
+          <td class="col-locate">${locateCell}</td>
+          <td class="col-rebuild">${rebuildCell}</td>
           <td class="col-raid">${raidText}</td>
           <td class="col-expand"><button class="expand-btn" type="button" aria-label="展开详情">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
           </button></td>
         </tr>
-        ${open ? `<tr class="detail"><td colspan="14">${detailHtml(disk)}</td></tr>` : ""}`;
+        ${open ? `<tr class="detail"><td colspan="16">${detailHtml(disk)}</td></tr>` : ""}`;
     }).join("");
 
     body.querySelectorAll("tr.main").forEach((row) => {
@@ -407,6 +424,14 @@
         if (state.expanded.has(id)) state.expanded.delete(id);
         else state.expanded.add(id);
         renderTable();
+      });
+    });
+
+    body.querySelectorAll(".locate-toggle").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const disk = (state.data?.disks || []).find((item) => item.id === button.dataset.locateId);
+        if (disk) locateOpen(disk, button.dataset.locateAction);
       });
     });
 
@@ -693,11 +718,79 @@
       state.app = data.app || null;
       if (state.app?.version) {
         $("#app-version").textContent = state.app.version;
+        const brandVersion = $("#brand-version");
+        if (brandVersion) brandVersion.textContent = state.app.version;
       }
       $("#admin-open").hidden = !user.admin;
+      $("#maintenance-card").hidden = !user.admin;
     } catch (error) {
       /* 401 已由 request() 处理 */
     }
+  }
+
+  /* ---------------- 定位灯（唯一允许的硬件写操作） ---------------- */
+  function locateOpen(disk, action) {
+    state.locate = { disk, action: action === "off" ? "off" : "on" };
+    const verb = state.locate.action === "on" ? "开启" : "关闭";
+    $("#locate-title").textContent = `${verb}定位灯`;
+    $("#locate-target").innerHTML = `<b>${esc(disk.bay_label || disk.bay || disk.id)}</b> · ${esc(disk.model || "—")}<br><span class="mono">${esc(disk.serial || "")}</span>`;
+    $("#locate-confirm").value = "";
+    $("#locate-submit").disabled = true;
+    $("#locate-modal").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => $("#locate-confirm").focus(), 30);
+  }
+
+  function locateClose() {
+    $("#locate-modal").hidden = true;
+    document.body.style.overflow = "";
+    state.locate = null;
+  }
+
+  function locateUpdateSubmit() {
+    $("#locate-submit").disabled = $("#locate-confirm").value.trim() !== "LOCATE" || !state.locate;
+  }
+
+  async function locateSubmit() {
+    const pending = state.locate;
+    if (!pending || $("#locate-confirm").value.trim() !== "LOCATE") return;
+    const button = $("#locate-submit");
+    button.disabled = true;
+    button.textContent = "切换中…";
+    try {
+      const res = await request("api/admin/locate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          disk_id: pending.disk.id,
+          action: pending.action,
+          confirm: "LOCATE",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const disk = (state.data?.disks || []).find((item) => item.id === pending.disk.id);
+      if (disk) disk.locate = pending.action === "on" ? "On" : "Off";
+      locateClose();
+      renderTable();
+      toast(`定位灯已${pending.action === "on" ? "开启" : "关闭"}：${pending.disk.bay_label || pending.disk.id}`);
+    } catch (error) {
+      toast(`定位灯切换失败：${error.message}`, true);
+      button.disabled = false;
+    } finally {
+      button.textContent = "确认切换";
+      locateUpdateSubmit();
+    }
+  }
+
+  function bindLocate() {
+    $("#locate-confirm").addEventListener("input", locateUpdateSubmit);
+    $("#locate-submit").addEventListener("click", locateSubmit);
+    $("#locate-cancel").addEventListener("click", locateClose);
+    $("#locate-close").addEventListener("click", locateClose);
+    $("#locate-modal").addEventListener("click", (event) => {
+      if (event.target === $("#locate-modal")) locateClose();
+    });
   }
 
   function bind() {
@@ -1091,6 +1184,88 @@
     }
   }
 
+  function dbBytes(value) {
+    const size = Number(value) || 0;
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  function dbDate(ts) {
+    if (!ts) return "—";
+    const date = new Date(Number(ts) * 1000);
+    if (Number.isNaN(date.getTime())) return "—";
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function dbRender(data) {
+    state.adminDb = data;
+    $("#admin-db-dir").value = data.directory || "";
+    $("#db-file-path").textContent = data.path || "—";
+    const stateLabel = data.error ? "读取失败" : !data.exists ? "未创建" : "正常";
+    const stateClass = data.error ? "error" : !data.exists ? "empty" : "ok";
+    $("#db-state").textContent = stateLabel;
+    $("#db-state").className = `db-state ${stateClass}`;
+    $("#db-default-hint").textContent = `默认：${data.default_directory || "—"}`;
+    $("#db-default-hint").title = "修改后切换到该目录下的 history.db；原数据库文件不会自动移动。";
+    const range = data.oldest_ts && data.newest_ts ? `${dbDate(data.oldest_ts)} → ${dbDate(data.newest_ts)}` : "—";
+    const wal = Number(data.wal_bytes) || 0;
+    $("#db-stats").innerHTML = `
+      <div class="db-stat">
+        <span>数据量</span>
+        <b>${Number(data.samples || 0).toLocaleString("zh-CN")} 条</b>
+        <small>${Number(data.disks || 0)} 块盘 · ${Number(data.controllers || 0)} 个控制器</small>
+      </div>
+      <div class="db-stat">
+        <span>数据库体积</span>
+        <b>${dbBytes(data.total_bytes)}</b>
+        <small>主库 ${dbBytes(data.db_bytes)}${wal ? ` · WAL ${dbBytes(wal)}` : ""}</small>
+      </div>
+      <div class="db-stat">
+        <span>覆盖范围</span>
+        <b class="db-range">${esc(range)}</b>
+        <small>保留 ${Number(data.retention_days || 180)} 天</small>
+      </div>
+    `;
+    $("#db-status").textContent = data.error ? `读取失败：${data.error}` : "";
+  }
+
+  async function dbLoad() {
+    $("#db-status").textContent = "读取数据库信息…";
+    try {
+      const res = await request("api/admin/db");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      dbRender(data);
+      $("#db-status").textContent = "";
+    } catch (error) {
+      $("#db-status").textContent = `读取失败：${error.message}`;
+      $("#db-state").textContent = "读取失败";
+      $("#db-state").className = "db-state error";
+    }
+  }
+
+  async function dbSave() {
+    const directory = $("#admin-db-dir").value.trim();
+    $("#db-status").textContent = "保存中…";
+    try {
+      const res = await request("api/admin/db", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ directory }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      dbRender(data);
+      toast("历史数据库路径已保存");
+    } catch (error) {
+      $("#db-status").textContent = `保存失败：${error.message}`;
+      toast(`数据库路径保存失败：${error.message}`, true);
+    }
+  }
+
   async function adminOpen() {
     if (!state.user?.admin) {
       toast("需要 fnOS 管理员权限", true);
@@ -1100,6 +1275,7 @@
     $("#admin-modal").hidden = false;
     document.body.style.overflow = "hidden";
     try { await adminLoad(); } catch (error) { toast(`读取后台设置失败：${error.message}`, true); }
+    await dbLoad();
   }
 
   function adminClose() {
@@ -1118,6 +1294,8 @@
 
     $("#admin-open").addEventListener("click", adminOpen);
     $("#admin-close").addEventListener("click", adminClose);
+    $("#db-save").addEventListener("click", dbSave);
+    $("#db-refresh").addEventListener("click", dbLoad);
     $("#admin-modal").addEventListener("click", (event) => { if (event.target === $("#admin-modal")) adminClose(); });
     $("#admin-provider").addEventListener("change", adminApplyPreset);
     $("#admin-save").addEventListener("click", async () => {
@@ -1521,6 +1699,7 @@
     const { model, disks } = group;
     const temp = compareRange(disks, "temperature_c");
     const other = compareRange(disks, "other_errors");
+    const power = compareRange(disks, "power_on_hours");
     const media = disks.reduce((sum, disk) => sum + (Number(disk?.latest?.media_errors) || 0), 0);
     const reallocated = disks.reduce((sum, disk) => sum + (Number(disk?.latest?.reallocated) || 0), 0);
     const tempDiff = temp ? temp.max - temp.min : null;
@@ -1555,7 +1734,8 @@
           </div>
           <div class="compare-diff">
             <span>温差 <b>${tempDiff === null ? "—" : `${tempDiff.toFixed(1)}°C`}</b></span>
-            <span>其他错误范围 <b>${other ? `${other.min}–${other.max}` : "—"}</b></span>
+            <span>其他错误范围 <b>${other ? `${Math.round(other.min)}–${Math.round(other.max)}` : "—"}</b></span>
+            <span>通电范围 <b>${power ? `${Math.round(power.min).toLocaleString("zh-CN")}–${Math.round(power.max).toLocaleString("zh-CN")} h` : "—"}</b></span>
             <span>介质合计 <b>${media}</b></span>
             <span>重映射合计 <b>${reallocated}</b></span>
           </div>
@@ -1966,6 +2146,110 @@
     document.body.style.overflow = "";
   }
 
+  /* ---------------- RAID 只读维护检查 ---------------- */
+  function maintenanceProgress(value) {
+    const match = String(value || "").match(/(\d+(?:\.\d+)?)\s*%?/);
+    return match ? Math.max(0, Math.min(100, Number(match[1]))) : null;
+  }
+
+  function maintenanceRender(data) {
+    state.maintenance = data;
+    const body = $("#maintenance-body");
+    const parts = [];
+    const rebuilds = data.rebuilds || [];
+    const foreign = data.foreign || [];
+    const locate = (data.locate || []).filter((item) => String(item.state || "").toLowerCase() === "on");
+    parts.push(`<div class="maintenance-grid">`);
+    parts.push(`<section class="maintenance-section"><h3>重建 / 回拷进度 <span>${rebuilds.length} 项</span></h3>`);
+    if (!rebuilds.length) {
+      parts.push(`<div class="maintenance-line maintenance-ok">未检测到正在重建或回拷的阵列。</div>`);
+    } else {
+      rebuilds.forEach((item) => {
+        const pct = maintenanceProgress(item.progress);
+        parts.push(`<div class="maintenance-line">
+          <b>${esc(item.controller || item.controller_id)}</b>
+          <span class="mono">${esc(item.vd_id || "PD")}</span>
+          <span>${esc(item.level || "—")}</span>
+          <span class="maintenance-warn">${esc(item.state_label || item.state || "重建中")}</span>
+          <span class="mono">${esc(item.progress || "进度未知")}</span>
+          ${pct === null ? "" : `<div class="maintenance-progress"><span style="width:${pct}%"></span></div>`}
+          <span class="mono">${(item.disks || []).map(esc).join(" · ")}</span>
+        </div>`);
+      });
+    }
+    parts.push(`</section>`);
+
+    parts.push(`<section class="maintenance-section"><h3>外部配置 <span>${foreign.length} 块盘</span></h3>`);
+    if (!foreign.length) {
+      parts.push(`<div class="maintenance-line maintenance-ok">未检测到外部配置（Foreign Config）。</div>`);
+    } else {
+      foreign.forEach((item) => {
+        parts.push(`<div class="maintenance-line">
+          <b class="maintenance-warn">发现外部配置</b>
+          <span>${esc(item.controller || item.controller_id)}</span>
+          <span class="mono">${esc(item.bay || "—")}</span>
+          <span>${esc(item.model || "—")}</span>
+          <span class="mono">${esc(item.serial || "")}</span>
+        </div>`);
+      });
+      parts.push(`<div class="maintenance-line maintenance-warn">本面板只读，不会执行 Import Foreign Config。</div>`);
+    }
+    parts.push(`</section>`);
+
+    parts.push(`<section class="maintenance-section"><h3>定位灯状态 <span>${locate.length} 个已开启</span></h3>`);
+    if (!locate.length) {
+      parts.push(`<div class="maintenance-line maintenance-ok">未检测到已开启的定位灯。</div>`);
+    } else {
+      locate.forEach((item) => {
+        parts.push(`<div class="maintenance-line">
+          <b>${esc(item.controller || item.controller_id)}</b>
+          <span class="mono">${esc(item.bay || "—")}</span>
+          <span>${esc(item.model || "—")}</span>
+          <span class="maintenance-warn">定位灯：${esc(item.state)}</span>
+        </div>`);
+      });
+    }
+    parts.push(`<div class="maintenance-line">定位灯仅在只读面板显示状态，不提供开 / 关按钮。</div></section>`);
+    parts.push(`</div>`);
+    if ((data.warnings || []).length) {
+      parts.push(`<div class="maintenance-line maintenance-warn">${data.warnings.map(esc).join("<br>")}</div>`);
+    }
+    body.innerHTML = parts.join("");
+    const audit = data.audit || [];
+    const auditBox = $("#maintenance-audit");
+    if (audit.length) {
+      auditBox.hidden = false;
+      auditBox.innerHTML = `<details><summary>最近只读操作审计（${audit.length}）</summary><ul>${audit
+        .slice(-6)
+        .map((item) => `<li>${esc(item.time)} · ${esc(item.user || "—")} · ${esc(item.action)} · ${esc(item.result)}</li>`)
+        .join("")}</ul></details>`;
+    } else {
+      auditBox.hidden = true;
+    }
+  }
+
+  async function maintenanceLoad() {
+    if (!state.user?.admin) return;
+    const button = $("#maintenance-refresh");
+    button.disabled = true;
+    $("#maintenance-body").innerHTML = `<div class="maintenance-empty">正在读取只读维护状态…</div>`;
+    try {
+      const res = await request("api/raid/maintenance");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      maintenanceRender(data);
+    } catch (error) {
+      $("#maintenance-body").innerHTML = `<div class="maintenance-empty maintenance-warn">读取失败：${esc(error.message)}</div>`;
+      $("#maintenance-audit").hidden = true;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function bindMaintenance() {
+    $("#maintenance-refresh").addEventListener("click", maintenanceLoad);
+  }
+
   function bindTopology() {
     $("#topology-open").addEventListener("click", () => topologyOpen());
     $("#topology-close").addEventListener("click", topologyClose);
@@ -1977,7 +2261,6 @@
     const app = state.app || {};
     $("#about-version").textContent = app.version ? `v${app.version}` : "—";
     $("#about-build").textContent = app.build || "—";
-    $("#about-mode").textContent = app.mode || (state.data?.mode === "gateway" ? "fnOS 应用中心" : "独立端口");
     $("#about-modal").hidden = false;
     $("#ai-modal").hidden = true;
     $("#admin-modal").hidden = true;
@@ -2034,6 +2317,8 @@
   /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */
   bind();
   bindAi();
+  bindMaintenance();
+  bindLocate();
   bindTrend();
   bindTopology();
   bindAbout();

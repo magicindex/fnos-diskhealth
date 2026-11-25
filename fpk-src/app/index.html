@@ -20,7 +20,7 @@
       <span></span><span></span><span></span><span></span>
     </div>
     <div class="brand-text">
-      <h1>RAID 阵列健康</h1>
+      <h1>RAID 阵列健康 <span class="brand-version">v<span id="brand-version">—</span></span></h1>
       <p>HARDWARE RAID・ARRAY MONITOR</p>
     </div>
   </div>
@@ -150,6 +150,21 @@
 
   <section class="controllers" id="controllers" aria-label="控制器"></section>
 
+  <section class="maintenance-card" id="maintenance-card" hidden>
+    <div class="maintenance-head">
+      <div class="maintenance-title">
+        <h2>RAID 维护检查 <span class="readonly-badge">只读</span></h2>
+        <p>重建进度 · 外部配置 · 定位灯状态。所有操作均为只读，不提供创建 / 删除 / 导入 / 启停重建 / 定位灯开关。</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="maintenance-refresh" type="button">检测</button>
+    </div>
+    <div class="maintenance-body" id="maintenance-body">
+      <div class="maintenance-empty">点击「检测」读取控制器维护状态。</div>
+    </div>
+    <div class="maintenance-audit" id="maintenance-audit" hidden></div>
+    <div class="maintenance-audit-link"><a href="audit" target="_blank" rel="noopener">查看完整审计日志 →</a></div>
+  </section>
+
   <section class="table-card">
     <div class="table-head">
       <h2>物理磁盘 <span class="count" id="table-count"></span></h2>
@@ -171,6 +186,8 @@
             <th class="col-hours">通电</th>
             <th class="col-err">介质错误</th>
             <th class="col-other-err">其他错误 <span class="th-info" title="非介质错误：常由 SMART 直通轮询 / SAS 链路累计，不是盘片介质故障，不计入健康告警。">?</span></th>
+            <th class="col-locate">定位灯</th>
+            <th class="col-rebuild">重建进度</th>
             <th class="col-raid">RAID</th>
             <th class="col-expand"></th>
           </tr>
@@ -193,17 +210,18 @@
 
   <footer class="foot">
     <div class="foot-main">
-      <span>数据源：perccli64（RAID 卡直通读取） + smartctl（SMART 属性）</span>
+      <span>Data: perccli64 (RAID passthrough) + smartctl (SMART attributes)</span>
       <span class="dot-sep">·</span>
-      <span>只读页面，不修改任何阵列配置</span>
+      <span>Read-only; no array changes</span>
       <span class="dot-sep">·</span>
-      <span id="foot-interval">自动采集 -- 秒</span>
+      <span id="foot-interval">Auto-refresh -- s</span>
     </div>
     <div class="foot-meta">
-      <span class="foot-brand">RAID 阵列健康</span>
+      <span class="foot-brand">RAID Array Monitor</span>
       <span class="mono">v<span id="app-version">—</span></span>
       <span>© 2026 cyberzero</span>
-      <button class="foot-about" id="about-open" type="button">关于</button>
+      <a class="foot-license" href="api/license" target="_blank" rel="noopener" title="GNU GPL v3.0 or later">GPL-3.0</a>
+      <button class="btn btn-ghost" id="about-open" type="button">About</button>
     </div>
   </footer>
 </main>
@@ -265,7 +283,7 @@
         <span class="ai-glyph admin-glyph">⚙</span>
         <div>
           <h3 id="admin-title">后台设置 <span class="admin-badge">仅管理员</span></h3>
-          <p>配置 AI 故障诊断接口。普通用户只能使用分析功能，看不到本页面与 API Key。</p>
+          <p>配置 AI 故障诊断接口与历史数据库路径。普通用户只能使用分析功能，看不到本页面与 API Key。</p>
         </div>
       </div>
       <button class="icon-btn" id="admin-close" type="button" aria-label="关闭">×</button>
@@ -305,7 +323,38 @@
         </div>
         <p class="ai-privacy">普通用户不可见本页面；分析内容会发送到所选 AI 服务商，默认脱敏序列号，报告仅保存在本机。</p>
       </div>
-      <div class="admin-note">API 配置仅管理员可读写：服务端会校验 fnOS 管理员 Header，普通用户即使构造请求也会被拒绝。</div>
+      <div class="db-settings">
+        <div class="db-settings-head">
+          <div>
+            <b>历史数据库</b>
+            <span>SQLite · history.db</span>
+          </div>
+          <div class="db-head-right">
+            <span class="db-status-text" id="db-status"></span>
+            <span class="db-state" id="db-state">正在读取…</span>
+          </div>
+        </div>
+        <div class="db-path-row">
+          <label class="db-path-field" for="admin-db-dir">
+            <span>数据库目录 <small>history.db 所在目录</small></span>
+            <input id="admin-db-dir" type="text" placeholder="/data" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="db-actions">
+            <button class="btn btn-primary btn-sm" id="db-save" type="button">保存路径</button>
+            <button class="btn btn-ghost btn-sm" id="db-refresh" type="button">刷新统计</button>
+          </div>
+        </div>
+        <div class="db-meta-row">
+          <div class="db-file-line"><span>实际文件</span><code id="db-file-path">—</code></div>
+          <span class="db-default-hint" id="db-default-hint">默认目录：—</span>
+        </div>
+        <div class="db-stats" id="db-stats">
+          <div class="db-stat"><span>数据量</span><b>—</b><small>条采样</small></div>
+          <div class="db-stat"><span>数据库体积</span><b>—</b><small>—</small></div>
+          <div class="db-stat"><span>覆盖范围</span><b>—</b><small>—</small></div>
+        </div>
+      </div>
+      <div class="admin-note">AI 配置与数据库路径仅管理员可读写：服务端会校验 fnOS 管理员 Header，普通用户即使构造请求也会被拒绝。</div>
       <div class="admin-footer">
         <div class="admin-copyright">
           <span>RAID 阵列健康</span>
@@ -405,6 +454,25 @@
 </div>
 
 
+<div class="modal" id="locate-modal" hidden>
+  <div class="modal-card locate-card" role="dialog" aria-modal="true" aria-labelledby="locate-title">
+    <div class="modal-head">
+      <div class="modal-title"><span class="ai-glyph">◎</span><div><h3 id="locate-title">切换定位灯</h3><p>只改变物理盘定位灯，不修改阵列配置。</p></div></div>
+      <button class="icon-btn" id="locate-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="locate-target" id="locate-target"></p>
+      <label class="locate-confirm-label" for="locate-confirm">输入 <b>LOCATE</b> 确认二次操作</label>
+      <input class="locate-confirm-input" id="locate-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="LOCATE">
+      <p class="locate-note">操作会写入审计日志，仅管理员可执行。</p>
+      <div class="locate-actions">
+        <button class="btn btn-ghost btn-sm" id="locate-cancel" type="button">取消</button>
+        <button class="btn btn-primary btn-sm" id="locate-submit" type="button" disabled>确认切换</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="about-modal" hidden>
   <div class="modal-card about-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
     <div class="modal-head">
@@ -427,15 +495,13 @@
       <div class="about-grid">
         <div><span>版本</span><b id="about-version">—</b></div>
         <div><span>构建</span><b id="about-build">—</b></div>
-        <div><span>运行模式</span><b id="about-mode">—</b></div>
-        <div><span>界面参考</span><b>玄览 / Arcane Vision</b></div>
         <div><span>许可证</span><b>GPL-3.0</b></div>
       </div>
       <div class="about-copy">
         <p class="about-copyright">© 2026 cyberzero · 保留所有权利</p>
         <p>面向 fnOS 的硬件 RAID / HBA 物理硬盘健康看板；数据来自 perccli64、smartctl 与 Linux SAS sysfs，只读采集，不修改阵列配置。</p>
         <p>本程序依据 GNU General Public License v3.0（GPL-3.0）发布，可自由使用、修改与再分发；再分发时请遵守 GPL-3.0 条款并提供对应源码。</p>
-        <p>本应用与 Dell、Broadcom、飞牛官方无隶属关系。界面信息排版参考玄览 / Arcane Vision，产品与版权归各自权利人所有。</p>
+        <p>本应用与 Dell、Broadcom、飞牛官方无隶属关系。</p>
       </div>
       <div class="about-actions">
         <button class="btn btn-primary btn-sm" id="about-done" type="button">关闭</button>

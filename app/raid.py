@@ -116,6 +116,10 @@ def enumerate_controllers(log) -> tuple[list[dict[str, Any]], list[str]]:
                 enclosures = {}
             pds, pds_status = _response(_json([f"/c{index}/eall/sall", "show", "all", "J"], timeout=90))
             vds, vds_status = _response(_json([f"/c{index}/vall", "show", "all", "J"], timeout=90))
+            try:
+                locate_data, _ = _response(_json([f"/c{index}", "show", "activityforlocate", "J"], timeout=60))
+            except PercError:
+                locate_data = None
         except PercError as exc:
             warnings.append(str(exc))
             log(str(exc))
@@ -124,7 +128,7 @@ def enumerate_controllers(log) -> tuple[list[dict[str, Any]], list[str]]:
             warnings.append(f"控制器 {index} 物理盘列表读取失败：{strip(pds_status.get('Description'))}")
         if not _ok(vds_status):
             warnings.append(f"控制器 {index} 虚拟盘列表读取失败：{strip(vds_status.get('Description'))}")
-        controllers.append(_parse_controller(index, info, pds, vds, overview.get(index, {}), enclosures))
+        controllers.append(_parse_controller(index, info, pds, vds, overview.get(index, {}), enclosures, locate_data))
     return controllers, warnings
 
 
@@ -266,6 +270,39 @@ def _parse_enclosures(data: dict[str, Any], cid: str) -> list[dict[str, Any]]:
     return result
 
 
+def _progress_text(*sources: dict[str, Any]) -> str:
+    for source in sources:
+        for key, value in source.items():
+            if "progress" in str(key).lower() and not isinstance(value, (dict, list)):
+                text = strip(value)
+                if text and text not in ("0", "0%", "0.0%"):
+                    return text
+    return ""
+
+
+def _locate_states(data: dict[str, Any]) -> dict[str, str]:
+    """从 activityforlocate 响应中提取 EID:Slt / DID 的定位灯状态。"""
+    result: dict[str, str] = {}
+
+    def walk(obj: Any) -> None:
+        if isinstance(obj, dict):
+            eid_slot = _value(obj, "EID:Slt", "EID:Slot")
+            did = obj.get("DID")
+            state = _value(obj, "Locate", "State", "Activity")
+            if eid_slot:
+                result[eid_slot] = state or "On"
+            if did is not None:
+                result[str(did)] = state or "On"
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+
+    walk(data)
+    return result
+
+
 def _parse_controller(
     index: int,
     info: dict[str, Any],
@@ -273,6 +310,7 @@ def _parse_controller(
     vds: dict[str, Any],
     overview: dict[str, Any],
     enclosures: dict[str, Any] | None = None,
+    locate_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cid = f"c{index}"
     details = _controller_details(info)
@@ -345,6 +383,7 @@ def _parse_controller(
                 "members": [strip(m.get("EID:Slt")) for m in members if isinstance(m, dict)],
                 "member_dids": [to_int(m.get("DID")) for m in members if isinstance(m, dict)],
                 "health": _vd_health(strip(item.get("State"))),
+                "rebuild_progress": _progress_text(item, props),
                 "scsi_naa": strip(props.get("SCSI NAA Id")),
                 "span_depth": to_int(props.get("Span Depth")),
                 "drives_per_span": to_int(props.get("Number of Drives Per Span")),
@@ -359,6 +398,8 @@ def _parse_controller(
                 vd_by_did[did] = vd
 
     enclosure_by_eid = {item.get("eid"): item for item in controller["enclosures"]}
+    locate_map = _locate_states(locate_data or {})
+    locate_available = locate_data is not None
 
     # 物理磁盘
     drive_keys = [
@@ -417,6 +458,12 @@ def _parse_controller(
                 "dg": to_int(item.get("DG")),
                 "vd_id": vd["id"] if vd else None,
                 "vd_level": vd["level"] if vd else "",
+                "rebuild_progress": vd.get("rebuild_progress", "") if vd else "",
+                "locate": (
+                    locate_map.get(eid_slot)
+                    or (locate_map.get(str(did)) if did is not None else "")
+                    or ("Off" if locate_available else "")
+                ),
                 "link_speed": normalize_text(attrs.get("Link Speed")),
                 "device_speed": normalize_text(attrs.get("Device Speed")),
                 "connector": normalize_text(attrs.get("Connector Name")),

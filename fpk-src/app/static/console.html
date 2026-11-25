@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<base href="/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>硬件控制台 · RAID Array Monitor</title>
+<script src="static/theme.js"></script>
+<link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="./">
+      <div class="logo" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <div class="brand-text"><h1>RAID Array Monitor</h1><p>HARDWARE CONSOLE · 读写控制</p></div>
+    </a>
+    <div class="top-actions">
+      <button class="icon-btn theme-toggle" id="theme-toggle" type="button" title="切换主题" aria-label="切换主题">
+        <svg class="theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5z"/></svg>
+        <svg class="theme-icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <a class="btn btn-ghost" href="./">返回监控</a>
+    </div>
+  </div>
+</header>
+
+<main class="console-main">
+  <div class="console-heading">
+    <div>
+      <h1>硬件控制台 <span class="console-experimental">实验性</span></h1>
+      <p>硬件 RAID 读写操作。所有操作都会直接作用于控制器和磁盘，可能造成数据丢失。</p>
+    </div>
+    <span class="console-danger">DANGER ZONE</span>
+  </div>
+
+  <section class="console-risk" role="alert">
+    <div class="console-risk-title">实验性功能风险提示</div>
+    <p>控制台中的创建、删除、扩容、初始化、重建、导入外部配置等写操作仍属于实验性功能，直接调用 <code>perccli</code> 修改硬件 RAID。操作可能导致数据丢失、阵列不可用、系统无法启动或其他不可恢复的后果。</p>
+    <p>请先完成数据备份，并在明确了解风险后再操作。生产环境建议先在测试设备验证。</p>
+  </section>
+
+  <section class="console-gate" id="console-gate">
+    <label class="console-risk-ack">
+      <input id="risk-ack" type="checkbox">
+      <span>我已阅读并理解实验性功能风险，确认继续使用控制台</span>
+    </label>
+    <div class="console-gate-card" id="console-setup" hidden>
+      <h2>首次创建安全码</h2>
+      <p>设置 3 组单词作为控制台安全码。安全码只创建一次，之后进入控制台只需登录；只保存哈希，无法找回，请自行记录。</p>
+      <div class="word-row">
+        <input id="setup-w1" type="password" autocomplete="off" placeholder="单词 1">
+        <input id="setup-w2" type="password" autocomplete="off" placeholder="单词 2">
+        <input id="setup-w3" type="password" autocomplete="off" placeholder="单词 3">
+      </div>
+      <button class="btn btn-danger" id="setup-submit" type="button" disabled>创建并进入</button>
+      <p class="console-hint" id="setup-hint"></p>
+    </div>
+    <div class="console-gate-card" id="console-login" hidden>
+      <h2>输入安全码</h2>
+      <p>安全码已经设置。以后进入控制台只需输入 3 组单词，不会再次创建。</p>
+      <p class="console-recovery">忘记安全码：不提供在线重置。请由管理员通过 SSH 删除 <code>data/console_security.json</code> 并重启应用，然后重新创建安全码。</p>
+      <div class="word-row">
+        <input id="login-w1" type="password" autocomplete="off" placeholder="单词 1">
+        <input id="login-w2" type="password" autocomplete="off" placeholder="单词 2">
+        <input id="login-w3" type="password" autocomplete="off" placeholder="单词 3">
+      </div>
+      <button class="btn btn-danger" id="login-submit" type="button" disabled>进入控制台</button>
+      <p class="console-hint" id="login-hint"></p>
+    </div>
+  </section>
+
+  <section class="console-dashboard" id="console-dashboard" hidden>
+    <div class="console-toolbar">
+      <span class="console-auth">已通过安全码验证</span>
+      <button class="btn btn-ghost btn-sm" id="console-logout" type="button">退出控制台</button>
+    </div>
+    <div class="console-grid">
+      <article class="console-panel">
+        <h2>控制器与阵列</h2>
+        <div id="console-inventory" class="console-inventory">加载中…</div>
+      </article>
+      <article class="console-panel">
+        <h2>写操作</h2>
+        <label class="console-field">操作
+          <select id="op-kind">
+            <option value="create_vd">创建 RAID 虚拟盘</option>
+            <option value="delete_vd">删除虚拟盘</option>
+            <option value="expand_vd">扩容虚拟盘</option>
+            <option value="init_vd">初始化虚拟盘</option>
+            <option value="rebuild">开始重建</option>
+            <option value="import_foreign">导入外部配置</option>
+          </select>
+        </label>
+        <div id="op-fields"></div>
+        <label class="console-field console-confirm">确认短语<input id="op-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="按提示输入"></label>
+        <p class="console-phrase">请输入：<b id="op-phrase">—</b></p>
+        <button class="btn btn-danger" id="op-submit" type="button">执行写操作</button>
+        <pre class="console-output" id="op-output" hidden></pre>
+      </article>
+    </div>
+  </section>
+</main>
+<footer class="foot audit-foot"><div class="foot-meta"><span class="foot-brand">RAID Array Monitor</span><span>© 2026 cyberzero</span><span>GPL-3.0</span><a href="./">返回监控</a></div></footer>
+<script src="static/console.js"></script>
+<script src="static/mobile.js"></script>
+</body>
+</html>

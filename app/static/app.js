@@ -23,8 +23,12 @@
     app: null,
     ai: { status: null, report: null, busy: false, admin: null },
     adminDb: null,
+    maintenance: null,
     trend: { diskId: "", metric: "temperature_c", days: 30, data: null, geom: null, loading: false, view: "single" },
     compare: { days: 30, controller: "", data: null, loading: false },
+    locate: null,
+    locateActive: {},
+    locateTimers: {},
     topo: { controller: "" },
   };
 
@@ -134,7 +138,7 @@
     renderTable();
     renderWarnings(data);
     const interval = data.refresh_interval || 120;
-    $("#foot-interval").textContent = `自动采集 ${interval} 秒`;
+    $("#foot-interval").textContent = `Auto-refresh ${interval}s`;
   }
 
   function updateMeta() {
@@ -213,7 +217,7 @@
   }
 
   function controllerKindClass(kind) {
-    return kind === "raid" ? "" : kind === "hba" ? "ctrl-hba" : "ctrl-direct";
+    return kind === "raid" ? "" : kind === "hba" ? "ctrl-hba" : kind === "soft" ? "ctrl-soft" : "ctrl-direct";
   }
 
   function renderControllers(data) {
@@ -221,15 +225,34 @@
     const list = data.controllers || [];
     wrap.innerHTML = list.map((ctrl) => {
       const active = state.controller === ctrl.id ? " active" : "";
-      const vds = (ctrl.vds || []).map((vd) => `
-        <div class="vd">
-          <span class="lv">${esc(vd.level || "RAID")}</span>
-          <span class="sz">${esc(vd.size || "")}</span>
+      const hardwareVds = (ctrl.vds || []).map((vd) => ({ ...vd, is_md: false }));
+      const mdVds = (ctrl.md_members || []).map((group) => ({
+        ...group,
+        id: group.array,
+        is_md: true,
+        level: group.level || "MD",
+        os_device: group.os_device || `/dev/${group.array}`,
+      }));
+      const vds = hardwareVds.concat(mdVds).map((vd) => {
+        const active = !!state.locateActive[vd.id];
+        const label = vd.is_md ? `${vd.id} ${vd.level} ${vd.size || ""}`.trim() : vd.id;
+        const locate = state.user?.admin
+          ? vd.locatable === false
+            ? `<span class="vd-no-locate" title="该阵列成员没有可控制的硬件定位灯">—</span>`
+            : `<button class="vd-locate ${active ? "on" : ""}" type="button" data-locate-target="${esc(vd.id)}" data-locate-label="${esc(label)}" title="${active ? "停止定位" : "定位该阵列的成员盘"}">${active ? "停止定位" : "定位"}</button>`
+          : "";
+        return `
+        <div class="vd ${vd.is_md ? "vd-md" : ""}" title="${vd.is_md ? "Linux mdadm 软 RAID" : ""}">
+          <span class="lv">${esc(vd.is_md ? vd.level : (vd.level || "RAID"))}</span>
+          <span class="sz">${esc(vd.is_md ? `${vd.id} · ${vd.size || ""}` : (vd.size || ""))}</span>
           ${badge(vd.health || "unknown", "sm")}
           <span class="os">${esc(vd.os_device || "")}</span>
-        </div>`).join("");
+          ${locate}
+        </div>`;
+      }).join("");
+      const filterable = ctrl.filterable !== false;
       return `
-        <article class="ctrl ${controllerKindClass(ctrl.kind)}${active}" data-controller="${esc(ctrl.id)}" tabindex="0">
+        <article class="ctrl ${controllerKindClass(ctrl.kind)}${active}${filterable ? "" : " ctrl-static"}" data-controller="${esc(ctrl.id)}" tabindex="${filterable ? "0" : "-1"}">
           <div class="ctrl-head">
             <div class="ctrl-title">
               <h3 title="${esc(ctrl.model)}">${esc(ctrl.model || ctrl.id)}</h3>
@@ -248,10 +271,12 @@
             ${ctrl.expander_count ? `<span>扩展器 <b>${esc(ctrl.expander_count)}</b></span>` : ""}
           </div>
           ${vds ? `<div class="vds">${vds}</div>` : ""}
+          ${ctrl.kind === "hba" && !(ctrl.md_members || []).length ? `<div class="ctrl-md-members ctrl-md-empty">未发现成员盘加入 md 阵列</div>` : ""}
+          ${ctrl.kind === "direct" && !(ctrl.md_members || []).length && (ctrl.id === "nvme" || ctrl.id === "sata") ? `<div class="ctrl-md-members ctrl-md-empty">未发现 md 阵列成员</div>` : ""}
           <div class="ctrl-foot">
             <span>物理磁盘 <b>${ctrl.disk_count ?? 0}</b> 块</span>
             <span class="ctrl-foot-right">
-              <button class="topo-link" type="button" data-controller-id="${esc(ctrl.id)}">查看拓扑</button>
+              ${ctrl.topology === false ? "" : `<button class="topo-link" type="button" data-controller-id="${esc(ctrl.id)}">查看拓扑</button>`}
               <span>${esc(ctrl.id)} · 只读</span>
             </span>
           </div>
@@ -259,6 +284,7 @@
     }).join("");
 
     wrap.querySelectorAll(".ctrl").forEach((card) => {
+      if (card.classList.contains("ctrl-static")) return;
       const activate = () => {
         const id = card.dataset.controller;
         state.controller = state.controller === id ? "" : id;
@@ -272,6 +298,14 @@
       card.addEventListener("click", activate);
       card.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); }
+      });
+      card.querySelectorAll(".vd-locate").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const target = button.dataset.locateTarget;
+          if (state.locateActive[target]) locateStop(target);
+          else locateOpen(target, button.dataset.locateLabel || target);
+        });
       });
       const topoLink = card.querySelector(".topo-link");
       if (topoLink) {
@@ -287,7 +321,7 @@
     const controllerSelect = $("#f-controller");
     const current = state.controller;
     const options = [`<option value="">全部控制器</option>`].concat(
-      (data.controllers || []).map((ctrl) => `<option value="${esc(ctrl.id)}">${esc(ctrl.model)}（${esc(ctrl.kind_label || ctrl.kind)}）</option>`)
+      (data.controllers || []).filter((ctrl) => ctrl.filterable !== false).map((ctrl) => `<option value="${esc(ctrl.id)}">${esc(ctrl.model)}（${esc(ctrl.kind_label || ctrl.kind)}）</option>`)
     );
     controllerSelect.innerHTML = options.join("");
     controllerSelect.value = current;
@@ -344,7 +378,20 @@
     });
   }
 
+  function syncMobileFilter() {
+    const toggle = $("#mobile-filter-toggle");
+    if (!toggle) return;
+    const active = [state.controller, state.bay, state.health, state.q.trim()].filter(Boolean).length;
+    const count = $("#mobile-filter-count");
+    count.textContent = active ? String(active) : "";
+    count.hidden = !active;
+    toggle.classList.toggle("has-active", active > 0);
+    const label = toggle.querySelector(".mobile-filter-label");
+    if (label) label.textContent = $("#filters").classList.contains("open") ? "收起筛选" : "筛选";
+  }
+
   function renderTable() {
+    syncMobileFilter();
     const body = $("#disk-body");
     const disks = filteredDisks();
     const total = state.data?.disks?.length || 0;
@@ -375,9 +422,24 @@
       const otherCell = otherErrors === null || otherErrors === undefined
         ? `<span class="dash">—</span>`
         : `<span class="other-count ${otherErrors > 0 ? "has-info" : ""}" title="非介质错误：常由 SMART 直通轮询 / SAS 链路累计，不是盘片介质故障，不计入健康告警。">${num(otherErrors)}</span>`;
+      const locateRaw = String(disk.locate || "").toLowerCase();
+      const locateOn = ["on", "yes", "1", "true"].includes(locateRaw);
+      const locateLabel = disk.locate ? (locateOn ? "On" : "Off") : "—";
+      const locateActive = !!state.locateActive[disk.id];
+      const locateCell = state.user?.admin
+        ? `<button class="locate-toggle ${locateActive ? "on" : ""}" type="button" data-locate-target="${esc(disk.id)}" data-locate-label="${esc(`${disk.bay_label || disk.bay || disk.id} · ${disk.model || ""}`)}" title="${locateActive ? "停止定位" : "开启定位（30 秒后自动停止）"}"><span class="locate-dot"></span><span>${locateActive ? "停止定位" : "定位"}</span></button>`
+        : `<span class="locate-state ${locateOn ? "on" : ""}">${esc(locateLabel)}</span>`;
+      const rebuildProgress = String(disk.rebuild_progress || "").trim();
+      const rebuildCell = rebuildProgress
+        ? `<span class="rebuild-progress-text" title="${esc(rebuildProgress)}">${esc(rebuildProgress)}</span>`
+        : disk.state === "Rbld"
+          ? `<span class="rebuild-progress-text">重建中</span>`
+          : `<span class="dash">—</span>`;
       const raidText = disk.vd_id
         ? `<span class="chip">${esc(disk.vd_level || "RAID")}</span>${disk.dg !== null && disk.dg !== undefined ? `<small class="mono"> DG${esc(disk.dg)}</small>` : ""}`
-        : `<span class="dash">—</span>`;
+        : disk.md_array
+          ? `<span class="chip">${esc(disk.md_array)}</span><small class="mono"> ${esc(disk.md_level || "MD")}</small>`
+          : `<span class="dash">—</span>`;
       const stateBad = !["Onln", "Online", "Optl", "JBOD", "UGood", "Good"].includes(disk.state || "");
       return `
         <tr class="main${open ? " open" : ""}" data-id="${esc(disk.id)}">
@@ -394,12 +456,14 @@
           <td class="col-hours"><span class="mono" title="${disk.power_on_hours ?? ""} 小时">${powerOn(disk.power_on_hours)}</span></td>
           <td class="col-err">${errCell}</td>
           <td class="col-other-err">${otherCell}</td>
+          <td class="col-locate">${locateCell}</td>
+          <td class="col-rebuild">${rebuildCell}</td>
           <td class="col-raid">${raidText}</td>
           <td class="col-expand"><button class="expand-btn" type="button" aria-label="展开详情">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
           </button></td>
         </tr>
-        ${open ? `<tr class="detail"><td colspan="14">${detailHtml(disk)}</td></tr>` : ""}`;
+        ${open ? `<tr class="detail"><td colspan="16">${detailHtml(disk)}</td></tr>` : ""}`;
     }).join("");
 
     body.querySelectorAll("tr.main").forEach((row) => {
@@ -408,6 +472,18 @@
         if (state.expanded.has(id)) state.expanded.delete(id);
         else state.expanded.add(id);
         renderTable();
+      });
+    });
+
+    body.querySelectorAll("[data-locate-target]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const target = button.dataset.locateTarget;
+        if (state.locateActive[target]) {
+          locateStop(target);
+          return;
+        }
+        locateOpen(target, button.dataset.locateLabel || target);
       });
     });
 
@@ -698,12 +774,142 @@
         if (brandVersion) brandVersion.textContent = state.app.version;
       }
       $("#admin-open").hidden = !user.admin;
+      $("#console-open").hidden = !user.admin;
+      $("#maintenance-card").hidden = !user.admin;
+      $("#maintenance-toggle").hidden = !user.admin;
+      if (user.admin) loadLocateStatus();
     } catch (error) {
       /* 401 已由 request() 处理 */
     }
   }
 
+  /* ---------------- 定位灯（唯一允许的硬件写操作） ---------------- */
+  function locateRender() {
+    renderTable();
+    if (state.data) renderControllers(state.data);
+  }
+
+  function locateOpen(target, label) {
+    state.locate = { target, label };
+    $("#locate-title").textContent = "开启定位灯（30 秒）";
+    $("#locate-target").innerHTML = `<b>${esc(label)}</b><br><span class="mono">${esc(target)}</span>`;
+    $("#locate-confirm").value = "";
+    $("#locate-submit").disabled = true;
+    $("#locate-modal").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => $("#locate-confirm").focus(), 30);
+  }
+
+  function locateClose() {
+    $("#locate-modal").hidden = true;
+    document.body.style.overflow = "";
+    state.locate = null;
+  }
+
+  function locateUpdateSubmit() {
+    $("#locate-submit").disabled = $("#locate-confirm").value.trim() !== "LOCATE" || !state.locate;
+  }
+
+  function locateSchedule(target, seconds) {
+    if (state.locateTimers[target]) clearTimeout(state.locateTimers[target]);
+    state.locateTimers[target] = setTimeout(() => {
+      delete state.locateActive[target];
+      delete state.locateTimers[target];
+      locateRender();
+      loadLocateStatus();
+    }, Math.max(1000, (Number(seconds) || 31) * 1000 + 400));
+  }
+
+  function locateActivate(info) {
+    state.locateActive[info.target] = { label: info.label || info.target, until: info.until };
+    locateSchedule(info.target, info.seconds || info.auto_stop_seconds || 30);
+    locateRender();
+  }
+
+  async function loadLocateStatus() {
+    if (!state.user?.admin) return;
+    try {
+      const res = await request("api/admin/locate/status");
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      state.locateActive = {};
+      (data.items || []).forEach((item) => {
+        state.locateActive[item.target] = { label: item.label || item.target, until: item.until };
+        locateSchedule(item.target, item.seconds_left || data.auto_stop_seconds || 30);
+      });
+      locateRender();
+    } catch (error) {
+      /* 状态接口失败时保留当前按钮状态 */
+    }
+  }
+
+  async function locateSubmit() {
+    const pending = state.locate;
+    if (!pending || $("#locate-confirm").value.trim() !== "LOCATE") return;
+    const button = $("#locate-submit");
+    button.disabled = true;
+    button.textContent = "开启中…";
+    try {
+      const res = await request("api/admin/locate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: pending.target, disk_id: pending.target, action: "on", confirm: "LOCATE" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      locateClose();
+      locateActivate(data);
+      toast(`定位灯已开启，30 秒后自动停止：${pending.label}`);
+    } catch (error) {
+      toast(`开启定位失败：${error.message}`, true);
+      button.disabled = false;
+    } finally {
+      button.textContent = "确认开启";
+      locateUpdateSubmit();
+    }
+  }
+
+  async function locateStop(target) {
+    const label = state.locateActive[target]?.label || target;
+    try {
+      const res = await request("api/admin/locate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target, disk_id: target, action: "off", confirm: "STOP" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      delete state.locateActive[target];
+      if (state.locateTimers[target]) clearTimeout(state.locateTimers[target]);
+      delete state.locateTimers[target];
+      locateRender();
+      toast(`定位已停止：${label}`);
+    } catch (error) {
+      toast(`停止定位失败：${error.message}`, true);
+      loadLocateStatus();
+    }
+  }
+
+  function bindLocate() {
+    $("#locate-confirm").addEventListener("input", locateUpdateSubmit);
+    $("#locate-submit").addEventListener("click", locateSubmit);
+    $("#locate-cancel").addEventListener("click", locateClose);
+    $("#locate-close").addEventListener("click", locateClose);
+    $("#locate-modal").addEventListener("click", (event) => {
+      if (event.target === $("#locate-modal")) locateClose();
+    });
+  }
+
   function bind() {
+    const filterToggle = $("#mobile-filter-toggle");
+    if (filterToggle) {
+      filterToggle.addEventListener("click", () => {
+        const panel = $("#filters");
+        const open = panel.classList.toggle("open");
+        filterToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        syncMobileFilter();
+      });
+    }
     $("#auto").checked = state.auto;
     $("#auto").addEventListener("change", (event) => {
       state.auto = event.target.checked;
@@ -774,27 +980,8 @@
       renderTable();
     });
 
-    const menu = $("#export-menu");
-    $("#export-btn").addEventListener("click", (event) => {
-      event.stopPropagation();
-      const open = menu.classList.toggle("open");
-      $("#export-btn").setAttribute("aria-expanded", open ? "true" : "false");
-    });
-    document.addEventListener("click", () => {
-      menu.classList.remove("open");
-      $("#export-btn").setAttribute("aria-expanded", "false");
-    });
-    menu.querySelectorAll("[data-format]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        menu.classList.remove("open");
-        downloadExport(button.dataset.format);
-      });
-    });
-
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        menu.classList.remove("open");
         if (!$("#ai-modal").hidden) aiClose();
         if (!$("#admin-modal").hidden) adminClose();
         if (!$("#trend-modal").hidden) trendClose();
@@ -804,19 +991,6 @@
     });
   }
 
-  function downloadExport(format) {
-    const params = new URLSearchParams({ format });
-    if (state.controller) params.set("controller", state.controller);
-    if (state.bay) {
-      const [cid, bay] = state.bay.split("::");
-      params.set("controller", cid);
-      params.set("bay", bay);
-    }
-    if (state.health) params.set("health", state.health);
-    if (state.q.trim()) params.set("q", state.q.trim());
-    toast(`正在生成 ${format.toUpperCase()} 日志…`);
-    window.location.href = `api/export?${params.toString()}`;
-  }
 
   async function manualRefresh(force = false) {
     if (state.refreshing) return;
@@ -2056,6 +2230,121 @@
     document.body.style.overflow = "";
   }
 
+  /* ---------------- RAID 只读维护检查 ---------------- */
+  function maintenanceProgress(value) {
+    const match = String(value || "").match(/(\d+(?:\.\d+)?)\s*%?/);
+    return match ? Math.max(0, Math.min(100, Number(match[1]))) : null;
+  }
+
+  function maintenanceRender(data) {
+    state.maintenance = data;
+    const body = $("#maintenance-body");
+    const parts = [];
+    const rebuilds = data.rebuilds || [];
+    const foreign = data.foreign || [];
+    const locate = (data.locate || []).filter((item) => String(item.state || "").toLowerCase() === "on");
+    parts.push(`<div class="maintenance-grid">`);
+    parts.push(`<section class="maintenance-section"><h3>重建 / 回拷进度 <span>${rebuilds.length} 项</span></h3>`);
+    if (!rebuilds.length) {
+      parts.push(`<div class="maintenance-line maintenance-ok">未检测到正在重建或回拷的阵列。</div>`);
+    } else {
+      rebuilds.forEach((item) => {
+        const pct = maintenanceProgress(item.progress);
+        parts.push(`<div class="maintenance-line">
+          <b>${esc(item.controller || item.controller_id)}</b>
+          <span class="mono">${esc(item.vd_id || "PD")}</span>
+          <span>${esc(item.level || "—")}</span>
+          <span class="maintenance-warn">${esc(item.state_label || item.state || "重建中")}</span>
+          <span class="mono">${esc(item.progress || "进度未知")}</span>
+          ${pct === null ? "" : `<div class="maintenance-progress"><span style="width:${pct}%"></span></div>`}
+          <span class="mono">${(item.disks || []).map(esc).join(" · ")}</span>
+        </div>`);
+      });
+    }
+    parts.push(`</section>`);
+
+    parts.push(`<section class="maintenance-section"><h3>外部配置 <span>${foreign.length} 块盘</span></h3>`);
+    if (!foreign.length) {
+      parts.push(`<div class="maintenance-line maintenance-ok">未检测到外部配置（Foreign Config）。</div>`);
+    } else {
+      foreign.forEach((item) => {
+        parts.push(`<div class="maintenance-line">
+          <b class="maintenance-warn">发现外部配置</b>
+          <span>${esc(item.controller || item.controller_id)}</span>
+          <span class="mono">${esc(item.bay || "—")}</span>
+          <span>${esc(item.model || "—")}</span>
+          <span class="mono">${esc(item.serial || "")}</span>
+        </div>`);
+      });
+      parts.push(`<div class="maintenance-line maintenance-warn">本面板只读，不会执行 Import Foreign Config。</div>`);
+    }
+    parts.push(`</section>`);
+
+    parts.push(`<section class="maintenance-section"><h3>定位灯状态 <span>${locate.length} 个已开启</span></h3>`);
+    if (!locate.length) {
+      parts.push(`<div class="maintenance-line maintenance-ok">未检测到已开启的定位灯。</div>`);
+    } else {
+      locate.forEach((item) => {
+        parts.push(`<div class="maintenance-line">
+          <b>${esc(item.controller || item.controller_id)}</b>
+          <span class="mono">${esc(item.bay || "—")}</span>
+          <span>${esc(item.model || "—")}</span>
+          <span class="maintenance-warn">定位灯：${esc(item.state)}</span>
+        </div>`);
+      });
+    }
+    parts.push(`<div class="maintenance-line">定位灯仅在只读面板显示状态，不提供开 / 关按钮。</div></section>`);
+    parts.push(`</div>`);
+    if ((data.warnings || []).length) {
+      parts.push(`<div class="maintenance-line maintenance-warn">${data.warnings.map(esc).join("<br>")}</div>`);
+    }
+    body.innerHTML = parts.join("");
+    const audit = data.audit || [];
+    const auditBox = $("#maintenance-audit");
+    if (audit.length) {
+      auditBox.hidden = false;
+      auditBox.innerHTML = `<details><summary>最近只读操作审计（${audit.length}）</summary><ul>${audit
+        .slice(-6)
+        .map((item) => `<li>${esc(item.time)} · ${esc(item.user || "—")} · ${esc(item.action)} · ${esc(item.result)}</li>`)
+        .join("")}</ul></details>`;
+    } else {
+      auditBox.hidden = true;
+    }
+  }
+
+  async function maintenanceLoad() {
+    if (!state.user?.admin) return;
+    const button = $("#maintenance-refresh");
+    button.disabled = true;
+    $("#maintenance-body").innerHTML = `<div class="maintenance-empty">正在读取只读维护状态…</div>`;
+    try {
+      const res = await request("api/raid/maintenance");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      maintenanceRender(data);
+    } catch (error) {
+      $("#maintenance-body").innerHTML = `<div class="maintenance-empty maintenance-warn">读取失败：${esc(error.message)}</div>`;
+      $("#maintenance-audit").hidden = true;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function bindMaintenance() {
+    $("#maintenance-refresh").addEventListener("click", maintenanceLoad);
+    const toggle = $("#maintenance-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        const card = $("#maintenance-card");
+        const open = card.classList.toggle("open");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.classList.toggle("open", open);
+        const label = toggle.querySelector(".mobile-maintenance-label");
+        if (label) label.textContent = open ? "收起维护检查" : "RAID 维护检查";
+      });
+    }
+  }
+
   function bindTopology() {
     $("#topology-open").addEventListener("click", () => topologyOpen());
     $("#topology-close").addEventListener("click", topologyClose);
@@ -2123,6 +2412,8 @@
   /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */  /* ---------------- 启动 ---------------- */
   bind();
   bindAi();
+  bindMaintenance();
+  bindLocate();
   bindTrend();
   bindTopology();
   bindAbout();

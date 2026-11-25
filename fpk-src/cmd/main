@@ -51,7 +51,7 @@ start_app() {
     DISKHEALTH_GATEWAY_SOCKET="$SOCKET" \
     APP_BASE_PATH="/app/diskhealth" \
     AUTH_MODE="gateway" \
-    APP_VERSION="1.10.12" \
+    APP_VERSION="1.10.34" \
     APP_BUILD="2026-11-23" \
     DATA_DIR="$DATA_DIR" \
     PERCCLI_PATH="$APP_DIR/bin/perccli64" \

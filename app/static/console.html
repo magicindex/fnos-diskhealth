@@ -15,7 +15,7 @@
   <div class="topbar-inner">
     <a class="brand" href="./">
       <div class="logo" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-      <div class="brand-text"><h1>RAID Array Monitor</h1><p>HARDWARE CONSOLE · 读写控制</p></div>
+      <div class="brand-text"><h1>RAID 阵列健康 <span class="brand-version">v<span id="brand-version">—</span></span></h1><p>HARDWARE RAID・ARRAY MONITOR</p></div>
     </a>
     <div class="top-actions">
       <button class="icon-btn theme-toggle" id="theme-toggle" type="button" title="切换主题" aria-label="切换主题">
@@ -61,7 +61,7 @@
     <div class="console-gate-card" id="console-login" hidden>
       <h2>输入安全码</h2>
       <p>安全码已经设置。以后进入控制台只需输入 3 组单词，不会再次创建。</p>
-      <p class="console-recovery">忘记安全码：不提供在线重置。请由管理员通过 SSH 删除 <code>data/console_security.json</code> 并重启应用，然后重新创建安全码。</p>
+      <p class="console-recovery">忘记安全码：不提供在线重置。请由管理员通过 SSH 删除 <code>/usr/local/apps/@appconf/diskhealth/console_security.json</code> 并重启应用，然后重新创建安全码。</p>
       <div class="word-row">
         <input id="login-w1" type="password" autocomplete="off" placeholder="单词 1">
         <input id="login-w2" type="password" autocomplete="off" placeholder="单词 2">

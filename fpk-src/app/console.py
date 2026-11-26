@@ -24,7 +24,10 @@ import raid
 from util import strip
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
-SECRET_PATH = os.path.join(DATA_DIR, "console_security.json")
+# FPK 的 @appconf 目录在应用升级/重装时保留；data 目录仅作为 Docker/兼容回退。
+CONFIG_DIR = os.environ.get("TRIM_APPCONF") or "/usr/local/apps/@appconf/diskhealth"
+LEGACY_SECRET_PATH = os.path.join(DATA_DIR, "console_security.json")
+SECRET_PATH = os.path.join(CONFIG_DIR, "console_security.json") if os.path.isdir(CONFIG_DIR) else LEGACY_SECRET_PATH
 ITERATIONS = 200_000
 TOKEN_TTL = 1800
 _lock = threading.Lock()
@@ -58,14 +61,35 @@ def _hash(words: list[str], salt: bytes, iterations: int) -> str:
     return base64.b64encode(digest).decode("ascii")
 
 
-def _read_secret() -> dict[str, Any] | None:
+def _load_secret_file(path: str) -> dict[str, Any] | None:
     try:
-        with open(SECRET_PATH, "r", encoding="utf-8") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict) and data.get("hash") and data.get("salt"):
             return data
     except (OSError, ValueError, TypeError):
         pass
+    return None
+
+
+def _read_secret() -> dict[str, Any] | None:
+    primary = _load_secret_file(SECRET_PATH)
+    if primary:
+        return primary
+    if LEGACY_SECRET_PATH != SECRET_PATH:
+        legacy = _load_secret_file(LEGACY_SECRET_PATH)
+        if legacy:
+            # 从旧 data 位置迁移到升级后仍保留的 @appconf。
+            try:
+                os.makedirs(os.path.dirname(SECRET_PATH), exist_ok=True)
+                temp = SECRET_PATH + ".tmp"
+                with open(temp, "w", encoding="utf-8") as fh:
+                    json.dump(legacy, fh)
+                os.chmod(temp, 0o600)
+                os.replace(temp, SECRET_PATH)
+            except OSError:
+                pass
+            return legacy
     return None
 
 
@@ -85,12 +109,17 @@ def setup(words: Any) -> None:
             "iterations": ITERATIONS,
             "created_at": int(time.time()),
         }
-        os.makedirs(DATA_DIR, exist_ok=True)
-        temp = SECRET_PATH + ".tmp"
-        with open(temp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh)
-        os.chmod(temp, 0o600)
-        os.replace(temp, SECRET_PATH)
+        for path in (SECRET_PATH, LEGACY_SECRET_PATH):
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                temp = path + ".tmp"
+                with open(temp, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh)
+                os.chmod(temp, 0o600)
+                os.replace(temp, path)
+            except OSError:
+                if path == SECRET_PATH:
+                    raise ConsoleError("安全码保存失败", 500)
 
 
 def _rate_limit(uid: str) -> None:

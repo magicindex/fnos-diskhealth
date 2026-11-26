@@ -33,7 +33,7 @@ GATEWAY_SOCKET = os.environ.get("DISKHEALTH_GATEWAY_SOCKET", "").strip()
 APP_BASE_PATH = os.environ.get("APP_BASE_PATH", "").strip().rstrip("/")
 AUTH_MODE = os.environ.get("AUTH_MODE", "cookie").strip().lower()
 GATEWAY_MODE = AUTH_MODE == "gateway" or bool(GATEWAY_SOCKET)
-APP_VERSION = os.environ.get("APP_VERSION", "1.10.34").strip() or "1.10.34"
+APP_VERSION = os.environ.get("APP_VERSION", "1.10.45").strip() or "1.10.45"
 APP_BUILD = os.environ.get("APP_BUILD", "2026-11-23").strip() or "2026-11-23"
 APP_NAME = "RAID 阵列健康"
 APP_SUBTITLE = "HARDWARE RAID・ARRAY MONITOR"
@@ -344,19 +344,6 @@ class Handler(BaseHTTPRequestHandler):
                 if self._require_user(api=False) is None:
                     return
                 return self._static("logs.html")
-            if path in ("/audit", "/audit.html"):
-                user = self._require_user(api=False)
-                if user is None:
-                    return
-                if not bool(user.get("admin")):
-                    audit.record(user, "audit.page.view", result="denied", detail="non-admin")
-                    return self._error_html("页面不存在", "未找到该页面。", "", 404)
-                self.send_response(HTTPStatus.FOUND)
-                self.send_header("Location", f"{APP_BASE_PATH}/logs?tab=audit" if APP_BASE_PATH else "/logs?tab=audit")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-
             if self._require_user(api=path.startswith("/api/")) is None:
                 return
 
@@ -454,7 +441,6 @@ class Handler(BaseHTTPRequestHandler):
                         f"locate={len(data.get('locate') or [])}"
                     ),
                 )
-                data["audit"] = audit.recent(8)
                 return self._json(data)
             if path == "/api/admin/audit":
                 user = self.user or {}

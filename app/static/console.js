@@ -57,6 +57,16 @@
     return [1, 2, 3].map((i) => $(`#${prefix}-w${i}`).value.trim()).filter(Boolean);
   }
 
+  async function loadBrand() {
+    try {
+      const res = await fetch("api/session", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      const version = data.app?.version;
+      if (version && $("#brand-version")) $("#brand-version").textContent = version;
+    } catch (e) { /* keep — */ }
+  }
+
   async function loadState() {
     const data = await api("api/console/state");
     if (!data.configured) {
@@ -278,6 +288,7 @@
     location.reload();
   });
   bindRisk();
+  loadBrand();
   loadState().catch((error) => {
     $("#console-setup").hidden = false;
     $("#setup-hint").textContent = `加载失败：${error.message}`;

@@ -155,15 +155,13 @@
     <div class="maintenance-head">
       <div class="maintenance-title">
         <h2>RAID 维护检查 <span class="readonly-badge">只读</span></h2>
-        <p>重建进度 · 外部配置 · 定位灯状态。所有操作均为只读，不提供创建 / 删除 / 导入 / 启停重建 / 定位灯开关。</p>
+        <p>重建进度 · 外部配置 · 定位灯状态。维护检查为只读；定位灯控制请使用表格中的定位按钮。</p>
       </div>
       <button class="btn btn-ghost btn-sm" id="maintenance-refresh" type="button">检测</button>
     </div>
     <div class="maintenance-body" id="maintenance-body">
       <div class="maintenance-empty">点击「检测」读取控制器维护状态。</div>
     </div>
-    <div class="maintenance-audit" id="maintenance-audit" hidden></div>
-    <div class="maintenance-audit-link"><a href="logs?tab=audit" target="_blank" rel="noopener">进入日志中心 →</a></div>
   </section>
 
   <section class="table-card">
@@ -211,11 +209,11 @@
 
   <footer class="foot">
     <div class="foot-main">
-      <span>Data: perccli64 (RAID passthrough) + smartctl (SMART attributes)</span>
+      <span>数据：perccli64（RAID 直通）+ smartctl（SMART 属性）</span>
       <span class="dot-sep">·</span>
-      <span>Read-only; no array changes</span>
+      <span>只读监控；不修改阵列</span>
       <span class="dot-sep">·</span>
-      <span id="foot-interval">Auto-refresh -- s</span>
+      <span id="foot-interval">自动刷新 -- 秒</span>
     </div>
     <div class="foot-meta">
       <span class="foot-brand">RAID Array Monitor</span>

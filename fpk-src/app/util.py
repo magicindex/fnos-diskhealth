@@ -7,6 +7,8 @@ import json
 import os
 import re
 import subprocess
+import threading
+import time
 import unicodedata
 import urllib.parse
 from typing import Any
@@ -58,6 +60,30 @@ def run(cmd: list[str], timeout: int = 45) -> tuple[int, str, str]:
         return 124, out, f"命令超时（{timeout}s）：{' '.join(cmd)}"
     except Exception as exc:  # pragma: no cover - 防御性兜底
         return 1, "", f"命令执行失败：{exc}"
+
+
+_run_cache: dict[tuple[Any, ...], tuple[float, tuple[int, str, str]]] = {}
+_run_cache_lock = threading.Lock()
+RUN_CACHE_TTL = 5.0
+
+
+def clear_run_cache() -> None:
+    with _run_cache_lock:
+        _run_cache.clear()
+
+
+def run_cached(cmd: list[str], timeout: int = 45) -> tuple[int, str, str]:
+    """同一次采集轮次内复用 lsblk / zpool 等只读命令结果。"""
+    key = (tuple(cmd), timeout)
+    now_ts = time.monotonic()
+    with _run_cache_lock:
+        cached = _run_cache.get(key)
+        if cached and now_ts - cached[0] <= RUN_CACHE_TTL:
+            return cached[1]
+    result = run(cmd, timeout=timeout)
+    with _run_cache_lock:
+        _run_cache[key] = (now_ts, result)
+    return result
 
 
 def extract_json(text: str) -> dict[str, Any] | None:

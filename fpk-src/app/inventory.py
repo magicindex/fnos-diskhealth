@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 import sas
-from util import extract_json, natural_key, normalize_text, read_text, run, strip, to_int
+from util import extract_json, natural_key, normalize_text, read_text, run_cached, strip, to_int
 
 PCI_CHIPS = {
     "1000:0072": "LSI SAS2008",
@@ -82,7 +82,7 @@ def _ata_port(realpath: str) -> str:
 
 def collect(log) -> tuple[list[dict[str, Any]], list[str]]:
     """返回 (控制器列表, 警告列表)。每个控制器内包含 disks。"""
-    rc, out, err = run(
+    rc, out, err = run_cached(
         ["lsblk", "-J", "-b", "-o", "NAME,TYPE,SIZE,MODEL,SERIAL,TRAN,ROTA,HCTL"],
         timeout=20,
     )

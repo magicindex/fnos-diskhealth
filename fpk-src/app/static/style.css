@@ -326,6 +326,8 @@ a { color: var(--accent); }
   border-radius: var(--radius);
   background: linear-gradient(180deg, rgba(17, 27, 46, .92), rgba(11, 18, 31, .92));
   padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
   cursor: pointer;
   transition: border-color .15s, transform .12s;
   position: relative;
@@ -371,7 +373,7 @@ a { color: var(--accent); }
 .vd .sz { color: var(--text); font-family: var(--mono); font-size: 11px; }
 .vd .os { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--muted-2); }
 .ctrl-foot {
-  margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line-soft);
+  margin-top: auto; padding-top: 9px; border-top: 1px solid var(--line-soft);
   display: flex; align-items: center; justify-content: space-between;
   font-size: 11px; color: var(--muted-2);
 }
@@ -1952,10 +1954,6 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
 .maintenance-warn { color: var(--warn) !important; }
 .maintenance-progress { width: 100%; height: 5px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin-top: 5px; }
 .maintenance-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #fbbf24, #f59e0b); }
-.maintenance-audit { margin-top: 9px; border-top: 1px solid var(--line-soft); padding-top: 7px; font-size: 9.5px; color: var(--muted-2); }
-.maintenance-audit summary { cursor: pointer; color: var(--muted); }
-.maintenance-audit ul { margin: 5px 0 0; padding-left: 16px; line-height: 1.7; }
-.maintenance-audit li { font-family: var(--mono); font-size: 9.5px; }
 [data-theme="light"] .maintenance-card { background: #ffffff; border-color: #d6e1ef; }
 [data-theme="light"] .maintenance-section { background: #f8fafc; border-color: #e2e8f0; }
 [data-theme="light"] .readonly-badge { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
@@ -2023,9 +2021,6 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
   .audit-filters { grid-template-columns: 1fr; }
   .audit-actions { grid-column: auto; justify-content: flex-end; }
 }
-.maintenance-audit-link { margin-top: 7px; text-align: right; }
-.maintenance-audit-link a { font-size: 10.5px; color: var(--accent); text-decoration: none; }
-.maintenance-audit-link a:hover { text-decoration: underline; }
 
 /* ---------- 定位灯 / 重建进度列 ---------- */
 .col-locate { width: 80px; }
@@ -2324,3 +2319,74 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
   .mobile-maintenance-toggle { display: none !important; }
   .maintenance-card { display: block; }
 }
+
+/* 维护检查三个模块：宽屏等宽一行，窄屏自动换行 */
+.maintenance-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-items: stretch; }
+
+/* RAID 组颜色：同一组同色，不同组不同色 */
+.chip.raid-group-0 { color: #7dd3fc !important; border-color: rgba(56,189,248,.48) !important; background: rgba(56,189,248,.13) !important; }
+.chip.raid-group-1 { color: #6ee7b7 !important; border-color: rgba(52,211,153,.48) !important; background: rgba(52,211,153,.13) !important; }
+.chip.raid-group-2 { color: #fcd34d !important; border-color: rgba(251,191,36,.48) !important; background: rgba(251,191,36,.13) !important; }
+.chip.raid-group-3 { color: #c4b5fd !important; border-color: rgba(167,139,250,.48) !important; background: rgba(167,139,250,.13) !important; }
+.chip.raid-group-4 { color: #f9a8d4 !important; border-color: rgba(244,114,182,.48) !important; background: rgba(244,114,182,.13) !important; }
+.chip.raid-group-5 { color: #67e8f9 !important; border-color: rgba(34,211,238,.48) !important; background: rgba(34,211,238,.13) !important; }
+.chip.raid-group-6 { color: #fdba74 !important; border-color: rgba(251,146,60,.48) !important; background: rgba(251,146,60,.13) !important; }
+.chip.raid-group-7 { color: #a5b4fc !important; border-color: rgba(129,140,248,.48) !important; background: rgba(129,140,248,.13) !important; }
+.raid-group-dg.raid-group-0 { color: #7dd3fc !important; }
+.raid-group-dg.raid-group-1 { color: #6ee7b7 !important; }
+.raid-group-dg.raid-group-2 { color: #fcd34d !important; }
+.raid-group-dg.raid-group-3 { color: #c4b5fd !important; }
+.raid-group-dg.raid-group-4 { color: #f9a8d4 !important; }
+.raid-group-dg.raid-group-5 { color: #67e8f9 !important; }
+.raid-group-dg.raid-group-6 { color: #fdba74 !important; }
+.raid-group-dg.raid-group-7 { color: #a5b4fc !important; }
+.vd.raid-group-0 { border-color: rgba(56,189,248,.34); }
+.vd.raid-group-1 { border-color: rgba(52,211,153,.34); }
+.vd.raid-group-2 { border-color: rgba(251,191,36,.34); }
+.vd.raid-group-3 { border-color: rgba(167,139,250,.34); }
+.vd.raid-group-4 { border-color: rgba(244,114,182,.34); }
+.vd.raid-group-5 { border-color: rgba(34,211,238,.34); }
+.vd.raid-group-6 { border-color: rgba(251,146,60,.34); }
+.vd.raid-group-7 { border-color: rgba(129,140,248,.34); }
+.vd.raid-group-0 .lv { color: #7dd3fc; }
+.vd.raid-group-1 .lv { color: #6ee7b7; }
+.vd.raid-group-2 .lv { color: #fcd34d; }
+.vd.raid-group-3 .lv { color: #c4b5fd; }
+.vd.raid-group-4 .lv { color: #f9a8d4; }
+.vd.raid-group-5 .lv { color: #67e8f9; }
+.vd.raid-group-6 .lv { color: #fdba74; }
+.vd.raid-group-7 .lv { color: #a5b4fc; }
+[data-theme="light"] .chip.raid-group-0 { color: #0369a1 !important; border-color: #7dd3fc !important; background: #e0f2fe !important; }
+[data-theme="light"] .chip.raid-group-1 { color: #047857 !important; border-color: #6ee7b7 !important; background: #ecfdf5 !important; }
+[data-theme="light"] .chip.raid-group-2 { color: #92400e !important; border-color: #fcd34d !important; background: #fffbeb !important; }
+[data-theme="light"] .chip.raid-group-3 { color: #6d28d9 !important; border-color: #c4b5fd !important; background: #f5f3ff !important; }
+[data-theme="light"] .chip.raid-group-4 { color: #9d174d !important; border-color: #f9a8d4 !important; background: #fdf2f8 !important; }
+[data-theme="light"] .chip.raid-group-5 { color: #0e7490 !important; border-color: #67e8f9 !important; background: #ecfeff !important; }
+[data-theme="light"] .chip.raid-group-6 { color: #9a3412 !important; border-color: #fdba74 !important; background: #fff7ed !important; }
+[data-theme="light"] .chip.raid-group-7 { color: #3730a3 !important; border-color: #a5b4fc !important; background: #eef2ff !important; }
+[data-theme="light"] .raid-group-dg.raid-group-0 { color: #0369a1 !important; }
+[data-theme="light"] .raid-group-dg.raid-group-1 { color: #047857 !important; }
+[data-theme="light"] .raid-group-dg.raid-group-2 { color: #92400e !important; }
+[data-theme="light"] .raid-group-dg.raid-group-3 { color: #6d28d9 !important; }
+[data-theme="light"] .raid-group-dg.raid-group-4 { color: #9d174d !important; }
+[data-theme="light"] .raid-group-dg.raid-group-5 { color: #0e7490 !important; }
+[data-theme="light"] .raid-group-dg.raid-group-6 { color: #9a3412 !important; }
+[data-theme="light"] .raid-group-dg.raid-group-7 { color: #3730a3 !important; }
+
+/* 控制台 / 日志中心：与首页使用相同内容宽度、左右对齐和首屏间距 */
+.console-main, .audit-main {
+  max-width: 1560px;
+  padding: 22px 28px 40px;
+}
+.console-heading, .audit-heading { margin-bottom: var(--gap); }
+.audit-foot { max-width: 1560px; }
+.console-gate { padding: 18px 0 24px; }
+@media (max-width: 620px) {
+  .console-main, .audit-main { padding: 18px 14px 28px; }
+  .audit-foot { padding: 0 14px 18px; }
+}
+.vd-zfs { border-color: rgba(167,139,250,.28); background: rgba(167,139,250,.035); }
+.vd-zfs .lv { color: #c4b5fd; }
+[data-theme="light"] .vd-zfs { border-color: #c4b5fd; background: #f5f3ff; }
+[data-theme="light"] .vd-zfs .lv { color: #6d28d9; }
+.ctrl-version { margin-left: 1px; font-size: 8.5px; padding: 1px 4px; }

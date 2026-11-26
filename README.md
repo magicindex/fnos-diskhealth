@@ -32,6 +32,7 @@
 - **亮色 / 暗色主题**：顶栏一键切换，`localStorage` 记忆选择；表格、趋势图、拓扑、AI / 关于弹窗同步适配。
 - **历史数据库配置**：后台设置可修改 `history.db` 所在目录，显示采样条数、数据库体积、覆盖时间范围与 WAL 体积；路径持久化并在重启后继续生效。
 - **RAID 只读维护检查**：管理员面板检测重建 / 回拷进度、外部配置（Foreign Config）和定位灯状态；只读、无写操作，并记录审计日志。
+- **ZFS 存储池**：直通卡下的 ZFS RAIDZ / mirror 池会显示在 HBA 卡片内，成员盘 RAID 列显示 `ZFS RAIDZ2` 等标签；只读。
 - **MD 阵列归属**：md 阵列只显示在直通卡 / HBA / NVMe / SATA 等直接控制器下；硬件 RAID 卡只显示自身虚拟盘，不再重复显示硬件 VD 上创建的 md 阵列；只读。
 - **手机端维护检查**：小屏只显示一个「RAID 维护检查」按钮，展开后才显示维护面板和「检测」，收起后恢复单按钮。
 - **手机端筛选面板**：小屏只显示一个「筛选」按钮，展开后显示控制器 / 盘位 / 状态 / 搜索；收起后保留筛选结果和活动条件数量。
@@ -51,14 +52,27 @@
 - **fnOS 单点登录**：复用 NAS 用户 / 2FA，不建立本地账号密码。
 - **默认只读**：监控页面只执行 `perccli ... show` 与 `smartctl -a`；写操作必须通过管理员安全码控制台显式执行。
 
+## 本次修复（v1.10.45）
+
+- **ZFS 池识别**：HBA 直通卡下的 ZFS RAIDZ / mirror 池现在会显示在对应控制器卡片内，并标记成员盘的 `ZFS RAIDZ2` 等类型
+- **ZFS 解析修复**：兼容 zpool 转义换行/制表符，支持 `/dev/disk/by-partuuid/*` 成员路径
+- **控制器卡片对齐**：卡片改为纵向弹性布局，磁盘数量和拓扑按钮固定贴底，同一行卡片底部对齐
+- **版本徽标**：ZFS 池所属 HBA 卡片显示与首页一致的应用版本徽标
+- **RAID 组颜色**：同一阵列组同色，不同组使用不同颜色
+- **采集去重**：同一轮采集复用 `lsblk` / `zpool list` / `zpool status` 结果，避免重复扫描
+- **手机端**：顶部只保留用户和展开按钮；筛选、RAID 维护检查折叠为单按钮
+- **审计统一**：审计日志统一从日志中心查看；移除维护面板审计区和旧 `/audit` 入口
+- **界面统一**：控制台、日志中心品牌与首页统一；底部信息改为中文；提示关闭后持久隐藏
+- **安全码持久化**：控制台安全码保存到 `@appconf/diskhealth`，升级/重装不丢失
+
 ## 快速开始
 
 ### 方式一：飞牛应用中心（FPK，推荐）
 
-安装包见 GitHub **v1.10.34 Releases** 附件 `diskhealth-v1.10.34.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
+安装包见 GitHub **v1.10.45 Releases** 附件 `diskhealth-v1.10.45.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
 
 ```bash
-fnos-cli app install-fpk diskhealth-v1.10.34.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
 ```
 
 安装后从应用中心打开「RAID 阵列健康」。入口是 **`/app/diskhealth`**：fnOS 统一网关先校验登录态，再把请求转发到应用内的 Unix Socket，所以**打开即走 fnOS 登录，不需要在页面里再登录一次**。
@@ -259,6 +273,7 @@ SAS 盘没有 ATA 属性表，详情页改为展示 SCSI 错误计数器与缺�
 
 - 第一次打开：创建 3 组单词安全码；之后只登录，不会重复创建
 - 安全码使用 PBKDF2 哈希保存，权限 `0600`，不保存明文
+- 安全码保存在 `@appconf/diskhealth` 配置目录，应用升级/重装不会丢失
 - 登录后签发 30 分钟内存 Token
 - 失败 5 次锁定 10 分钟
 - 每个写操作需要输入精确确认短语
@@ -278,6 +293,7 @@ SAS 盘没有 ATA 属性表，详情页改为展示 SCSI 错误计数器与缺�
 控制台**不提供在线重置入口**。忘记安全码时，只能由拥有 SSH 权限的管理员操作：
 
 ```bash
+sudo rm -f /usr/local/apps/@appconf/diskhealth/console_security.json
 sudo rm -f /usr/local/apps/@appdata/diskhealth/data/console_security.json
 sudo fnos-cli app restart diskhealth --yes
 ```
@@ -312,6 +328,23 @@ sudo fnos-cli app restart diskhealth --yes
 
 普通用户可查看健康事件和数据导出，但看不到审计标签；直接访问审计 API 返回 403，旧 `/audit` 路径仅对管理员重定向到日志中心。
 
+
+## ZFS 池与控制器卡片
+
+HBA 直通卡下的 ZFS 池会自动读取：
+
+- `zpool list -Hp`
+- `zpool status -P`
+- `/dev/disk/by-partuuid/*` 成员路径
+
+显示规则：
+
+- ZFS 池显示在成员盘所属的 HBA 控制器卡片内
+- 池级别显示为 `RAIDZ`、`RAIDZ2`、`RAIDZ3` 或 `MIRROR`
+- 成员盘 RAID 列显示 `ZFS RAIDZ2` 等标识
+- 同一 ZFS 池使用统一颜色
+- 控制器卡片底部统一对齐，磁盘数量和「查看拓扑」始终位于卡片最底部
+- HBA 卡片显示与首页一致的版本徽标
 
 ## Linux 软 RAID（mdadm）
 
@@ -452,7 +485,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 页脚新增：
 
 - 应用名 `RAID 阵列健康`
-- 当前版本 `v1.10.34`
+- 当前版本 `v1.10.45`
 - `© 2026 cyberzero`
 - 「关于」入口
 
@@ -563,7 +596,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 | `AI_INSECURE_TLS` | `0` | AI 接口使用自签 HTTPS 时设为 `1` |
 | `AI_DATA_DIR` | 同 `DATA_DIR` | AI 配置与报告目录 |
 | `HISTORY_RETENTION_DAYS` | `180` | SQLite 历史保留天数 |
-| `APP_VERSION` | `1.10.34` | 页脚 / 关于弹窗显示的应用版本 |
+| `APP_VERSION` | `1.10.45` | 页脚 / 关于弹窗显示的应用版本 |
 | `APP_BUILD` | `2026-11-23` | 页脚 / 关于弹窗显示的构建日期 |
 
 `data/` 下会生成：
@@ -578,7 +611,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 
 ```
 disk-health/
-├── diskhealth-v1.10.34.fpk  # 本地打包产物，不提交仓库；见 Releases
+├── diskhealth-v1.10.45.fpk  # 本地打包产物，不提交仓库；见 Releases
 ├── fpk-src/             # FPK 源：manifest / ui/config / cmd / icons
 │   ├── manifest
 │   ├── app/             # 安装到 ${TRIM_APPDEST} 的代码与静态资源

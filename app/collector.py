@@ -17,9 +17,10 @@ import health
 import history
 import inventory
 import mdraid
+import zfsraid
 import raid
 import smart
-from util import iso_now, natural_key, now, read_text, strip, to_int
+from util import clear_run_cache, iso_now, natural_key, now, read_text, strip, to_int
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 REFRESH_INTERVAL = max(30, to_int(os.environ.get("REFRESH_INTERVAL")) or 120)
@@ -61,6 +62,7 @@ def _fmt_size(size: int | float | None) -> str:
 
 def collect_all() -> tuple[dict[str, Any], list[str]]:
     started = time.time()
+    clear_run_cache()
     warnings: list[str] = []
     seen: set[str] = set()
 
@@ -80,6 +82,9 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
         log(warning)
     md_controllers, md_warnings = mdraid.collect(log)
     for warning in md_warnings:
+        log(warning)
+    zfs_pools, zfs_warnings = zfsraid.collect(log)
+    for warning in zfs_warnings:
         log(warning)
 
     disks: list[dict[str, Any]] = []
@@ -116,6 +121,10 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
     md_members: dict[str, list[dict[str, Any]]] = {}
     for controller in md_controllers:
         md_members.update(controller.pop("_member_map", {}) or {})
+    zfs_by_base: dict[str, list[dict[str, Any]]] = {}
+    for pool in zfs_pools:
+        for member in pool.get("members") or []:
+            zfs_by_base.setdefault(member, []).append(pool)
     for disk in disks:
         base = os.path.basename(str(disk.get("device") or ""))
         if not base:
@@ -126,6 +135,12 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
             disk["md_array"] = ", ".join(item.get("array") or "" for item in arrays)
             disk["md_level"] = ", ".join(item.get("level") or "" for item in arrays)
             disk["md_state"] = ", ".join(item.get("state") or "" for item in arrays)
+        pools = zfs_by_base.get(base)
+        if pools:
+            disk["zfs_pools"] = pools
+            disk["zfs_pool"] = ", ".join(item.get("name") or "" for item in pools)
+            disk["zfs_level"] = ", ".join(item.get("level") or "" for item in pools)
+            disk["zfs_state"] = ", ".join(item.get("state") or "" for item in pools)
 
     # 并行读取 SMART（不同控制器/磁盘互不阻塞）
     jobs: list[tuple[dict[str, Any], Any]] = []
@@ -261,6 +276,27 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
                 if device and device not in group["devices"]:
                     group["devices"].append(device)
         controller["md_members"] = sorted(md_groups.values(), key=lambda item: item["array"])
+        zfs_groups: dict[str, dict[str, Any]] = {}
+        for disk in controller_disks:
+            base = os.path.basename(str(disk.get("device") or ""))
+            for pool in zfs_by_base.get(base, []):
+                key = str(pool.get("name") or "")
+                if not key:
+                    continue
+                group = zfs_groups.setdefault(key, {
+                    "array": key,
+                    "level": pool.get("level") or "ZFS",
+                    "size": pool.get("size") or "—",
+                    "state": pool.get("state") or "—",
+                    "health": pool.get("health") or "unknown",
+                    "os_device": key,
+                    "locatable": False,
+                    "devices": [],
+                })
+                device = str(disk.get("device") or "")
+                if device and device not in group["devices"]:
+                    group["devices"].append(device)
+        controller["zfs_members"] = sorted(zfs_groups.values(), key=lambda item: item["array"])
 
     # Mark VD locate availability: hardware VDs locate their member PDs;
     # md arrays only when their members map to hardware VDs (NVMe has no PERC LED).
@@ -309,6 +345,8 @@ def collect_all() -> tuple[dict[str, Any], list[str]]:
         for vd in controller.get("vds") or []
         if vd.get("id") in visible_md_ids
     ]
+    for pool in zfs_pools:
+        vds.append({"id": pool.get("name"), "health": pool.get("health"), "level": pool.get("level")})
     vd_optimal = sum(1 for vd in vds if vd.get("health") == "ok")
     topology = _build_topology(raid_controllers + direct_controllers, disks)
 
@@ -391,6 +429,9 @@ def _sort_disk(disk: dict[str, Any]) -> dict[str, Any]:
         "md_array",
         "md_level",
         "md_state",
+        "zfs_pool",
+        "zfs_level",
+        "zfs_state",
         "locate",
         "temperature_c",
         "power_on_hours",
@@ -463,6 +504,7 @@ def _public_controller(controller: dict[str, Any]) -> dict[str, Any]:
         "filterable",
         "topology",
         "md_members",
+        "zfs_members",
     )
     data = {key: controller.get(key) for key in keys if key in controller}
     data["vds"] = [

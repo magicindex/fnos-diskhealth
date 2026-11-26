@@ -31,6 +31,7 @@
       if (!res.ok) return;
       const data = await res.json();
       state.user = data.user || {};
+      if (data.app?.version && $("#brand-version")) $("#brand-version").textContent = data.app.version;
     } catch (e) { state.user = null; }
     if (state.user?.admin) {
       $('.log-tab[data-tab="audit"]').hidden = false;

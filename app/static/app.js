@@ -18,12 +18,13 @@
     auto: localStorage.getItem("disk-health-auto") !== "0",
     timer: null,
     refreshing: false,
-    otherInfoDismissed: false,
+    otherInfoDismissed: localStorage.getItem("disk-health-other-info-dismissed") === "1",
     user: null,
     app: null,
     ai: { status: null, report: null, busy: false, admin: null },
     adminDb: null,
     maintenance: null,
+    raidGroupColors: new Map(),
     trend: { diskId: "", metric: "temperature_c", days: 30, data: null, geom: null, loading: false, view: "single" },
     compare: { days: 30, controller: "", data: null, loading: false },
     locate: null,
@@ -138,7 +139,7 @@
     renderTable();
     renderWarnings(data);
     const interval = data.refresh_interval || 120;
-    $("#foot-interval").textContent = `Auto-refresh ${interval}s`;
+    $("#foot-interval").textContent = `自动刷新 ${interval} 秒`;
   }
 
   function updateMeta() {
@@ -220,6 +221,15 @@
     return kind === "raid" ? "" : kind === "hba" ? "ctrl-hba" : kind === "soft" ? "ctrl-soft" : "ctrl-direct";
   }
 
+  function raidGroupClass(key) {
+    const value = String(key || "");
+    if (!value) return "";
+    if (!state.raidGroupColors.has(value)) {
+      state.raidGroupColors.set(value, state.raidGroupColors.size % 8);
+    }
+    return `raid-group-${state.raidGroupColors.get(value)}`;
+  }
+
   function renderControllers(data) {
     const wrap = $("#controllers");
     const list = data.controllers || [];
@@ -233,20 +243,31 @@
         level: group.level || "MD",
         os_device: group.os_device || `/dev/${group.array}`,
       }));
-      const vds = hardwareVds.concat(mdVds).map((vd) => {
+      const zfsVds = (ctrl.zfs_members || []).map((group) => ({
+        ...group,
+        id: group.array,
+        is_zfs: true,
+        level: group.level || "ZFS",
+        os_device: group.os_device || group.array,
+      }));
+      const vds = hardwareVds.concat(mdVds).concat(zfsVds).map((vd) => {
         const active = !!state.locateActive[vd.id];
-        const label = vd.is_md ? `${vd.id} ${vd.level} ${vd.size || ""}`.trim() : vd.id;
+        const label = vd.is_md || vd.is_zfs ? `${vd.id} ${vd.level} ${vd.size || ""}`.trim() : vd.id;
+        const osText = vd.is_zfs ? `${String(vd.id || "").slice(0, 10)}…` : (vd.os_device || "");
+        const osTitle = vd.is_zfs ? String(vd.id || "") : (vd.os_device || "");
+        const sizeText = vd.is_zfs ? (vd.size || "") : (vd.is_md ? `${vd.id} · ${vd.size || ""}` : (vd.size || ""));
         const locate = state.user?.admin
           ? vd.locatable === false
             ? `<span class="vd-no-locate" title="该阵列成员没有可控制的硬件定位灯">—</span>`
             : `<button class="vd-locate ${active ? "on" : ""}" type="button" data-locate-target="${esc(vd.id)}" data-locate-label="${esc(label)}" title="${active ? "停止定位" : "定位该阵列的成员盘"}">${active ? "停止定位" : "定位"}</button>`
           : "";
+        const rg = raidGroupClass(vd.id);
         return `
-        <div class="vd ${vd.is_md ? "vd-md" : ""}" title="${vd.is_md ? "Linux mdadm 软 RAID" : ""}">
-          <span class="lv">${esc(vd.is_md ? vd.level : (vd.level || "RAID"))}</span>
-          <span class="sz">${esc(vd.is_md ? `${vd.id} · ${vd.size || ""}` : (vd.size || ""))}</span>
+        <div class="vd ${vd.is_md ? "vd-md" : ""} ${vd.is_zfs ? "vd-zfs" : ""} ${rg}" title="${vd.is_md ? "Linux mdadm 软 RAID" : vd.is_zfs ? "ZFS 存储池" : ""}">
+          <span class="lv">${esc(vd.is_md || vd.is_zfs ? vd.level : (vd.level || "RAID"))}</span>
+          <span class="sz">${esc(sizeText)}</span>
           ${badge(vd.health || "unknown", "sm")}
-          <span class="os">${esc(vd.os_device || "")}</span>
+          <span class="os" title="${esc(osTitle)}">${esc(osText)}</span>
           ${locate}
         </div>`;
       }).join("");
@@ -257,6 +278,7 @@
             <div class="ctrl-title">
               <h3 title="${esc(ctrl.model)}">${esc(ctrl.model || ctrl.id)}</h3>
               <span class="ctrl-kind">${esc(ctrl.kind_label || ctrl.kind)}</span>
+              ${(ctrl.zfs_members || []).length ? `<span class="brand-version ctrl-version">v${esc(state.app?.version || "—")}</span>` : ""}
             </div>
             ${badge(ctrl.health || "unknown")}
           </div>
@@ -271,7 +293,7 @@
             ${ctrl.expander_count ? `<span>扩展器 <b>${esc(ctrl.expander_count)}</b></span>` : ""}
           </div>
           ${vds ? `<div class="vds">${vds}</div>` : ""}
-          ${ctrl.kind === "hba" && !(ctrl.md_members || []).length ? `<div class="ctrl-md-members ctrl-md-empty">未发现成员盘加入 md 阵列</div>` : ""}
+          ${ctrl.kind === "hba" && !(ctrl.md_members || []).length && !(ctrl.zfs_members || []).length ? `<div class="ctrl-md-members ctrl-md-empty">未发现 md 阵列或 ZFS 存储池</div>` : ""}
           ${ctrl.kind === "direct" && !(ctrl.md_members || []).length && (ctrl.id === "nvme" || ctrl.id === "sata") ? `<div class="ctrl-md-members ctrl-md-empty">未发现 md 阵列成员</div>` : ""}
           <div class="ctrl-foot">
             <span>物理磁盘 <b>${ctrl.disk_count ?? 0}</b> 块</span>
@@ -435,11 +457,15 @@
         : disk.state === "Rbld"
           ? `<span class="rebuild-progress-text">重建中</span>`
           : `<span class="dash">—</span>`;
+      const groupKey = disk.vd_id || (disk.md_array ? String(disk.md_array) : "") || (disk.zfs_pool ? String(disk.zfs_pool) : "");
+      const groupClass = raidGroupClass(groupKey);
       const raidText = disk.vd_id
-        ? `<span class="chip">${esc(disk.vd_level || "RAID")}</span>${disk.dg !== null && disk.dg !== undefined ? `<small class="mono"> DG${esc(disk.dg)}</small>` : ""}`
+        ? `<span class="chip ${groupClass}">${esc(disk.vd_level || "RAID")}</span>${disk.dg !== null && disk.dg !== undefined ? `<small class="mono raid-group-dg ${groupClass}"> DG${esc(disk.dg)}</small>` : ""}`
         : disk.md_array
-          ? `<span class="chip">${esc(disk.md_array)}</span><small class="mono"> ${esc(disk.md_level || "MD")}</small>`
-          : `<span class="dash">—</span>`;
+          ? `<span class="chip ${groupClass}">${esc(disk.md_array)}</span><small class="mono raid-group-dg ${groupClass}"> ${esc(disk.md_level || "MD")}</small>`
+          : disk.zfs_pool
+            ? `<span class="chip ${groupClass}">ZFS</span><small class="mono raid-group-dg ${groupClass}"> ${esc(disk.zfs_level || "RAIDZ")}</small>`
+            : `<span class="dash">—</span>`;
       const stateBad = !["Onln", "Online", "Optl", "JBOD", "UGood", "Good"].includes(disk.state || "");
       return `
         <tr class="main${open ? " open" : ""}" data-id="${esc(disk.id)}">
@@ -778,6 +804,7 @@
       $("#maintenance-card").hidden = !user.admin;
       $("#maintenance-toggle").hidden = !user.admin;
       if (user.admin) loadLocateStatus();
+      if (state.data) renderControllers(state.data);
     } catch (error) {
       /* 401 已由 request() 处理 */
     }
@@ -920,6 +947,7 @@
     $("#refresh").addEventListener("click", () => manualRefresh(true));
     $("#other-info-close").addEventListener("click", () => {
       state.otherInfoDismissed = true;
+      try { localStorage.setItem("disk-health-other-info-dismissed", "1"); } catch (error) {}
       $("#other-info").hidden = true;
     });
     $("#donate-open").addEventListener("click", () => { window.location.href = "donate"; });
@@ -2293,23 +2321,12 @@
         </div>`);
       });
     }
-    parts.push(`<div class="maintenance-line">定位灯仅在只读面板显示状态，不提供开 / 关按钮。</div></section>`);
+    parts.push(`<div class="maintenance-line">定位灯控制请使用物理盘 / 阵列行中的定位按钮。</div></section>`);
     parts.push(`</div>`);
     if ((data.warnings || []).length) {
       parts.push(`<div class="maintenance-line maintenance-warn">${data.warnings.map(esc).join("<br>")}</div>`);
     }
     body.innerHTML = parts.join("");
-    const audit = data.audit || [];
-    const auditBox = $("#maintenance-audit");
-    if (audit.length) {
-      auditBox.hidden = false;
-      auditBox.innerHTML = `<details><summary>最近只读操作审计（${audit.length}）</summary><ul>${audit
-        .slice(-6)
-        .map((item) => `<li>${esc(item.time)} · ${esc(item.user || "—")} · ${esc(item.action)} · ${esc(item.result)}</li>`)
-        .join("")}</ul></details>`;
-    } else {
-      auditBox.hidden = true;
-    }
   }
 
   async function maintenanceLoad() {
@@ -2324,7 +2341,6 @@
       maintenanceRender(data);
     } catch (error) {
       $("#maintenance-body").innerHTML = `<div class="maintenance-empty maintenance-warn">读取失败：${esc(error.message)}</div>`;
-      $("#maintenance-audit").hidden = true;
     } finally {
       button.disabled = false;
     }

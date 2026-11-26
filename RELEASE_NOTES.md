@@ -1,15 +1,23 @@
-# RAID 阵列健康 v1.10.46
+# RAID 阵列健康 v1.10.47
 
 ## 本次变更
 
-- **飞牛桌面访问默认仅管理员**：`app/ui/config` 的 `allUsers` 设为 `false`，设备内普通用户不再看到应用入口
-- Release 附件仅保留安装包与校验文件，不再上传截图图片
-- 沿用 v1.10.45 的 ZFS 池识别、控制器卡片底部对齐、采集缓存和手机端适配
+- **应用图标统一**：重新生成 `ICON.PNG`、`ICON_256.PNG` 与 `app/ui/images/icon_*`，桌面入口与软件内部四方块 Logo 一致
+- **AI 历史分析记录**：
+  - 分析结果自动保存
+  - 支持手动保存确认
+  - 历史记录查看、删除、单条导出
+  - 历史记录全部导出 JSON
+  - 选择两条历史记录并排对比
+  - 普通用户仅能访问自己的记录，管理员可管理全部
+  - 删除操作写入审计日志
+- 沿用 v1.10.46 的飞牛桌面入口「仅管理员」默认设置
+- Release 附件仅保留安装包与 SHA256SUMS，不上传截图
 
 ## 安装与升级
 
 ```bash
-fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.47.fpk --volume-id 1 --yes
 ```
 
 - 升级前备份重要数据并保留旧安装包

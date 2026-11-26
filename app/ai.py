@@ -711,7 +711,7 @@ def _save_report(report: dict[str, Any]) -> None:
             return
 
 
-def list_reports(limit: int = 30, uid: str | None = None, is_admin: bool = False) -> list[dict[str, Any]]:
+def list_reports(limit: int = 100, uid: str | None = None, is_admin: bool = False) -> list[dict[str, Any]]:
     reports: list[dict[str, Any]] = []
     try:
         with open(REPORT_INDEX, "r", encoding="utf-8") as fh:
@@ -754,6 +754,86 @@ def get_report(report_id: str) -> dict[str, Any] | None:
     except OSError:
         return None
     return None
+
+
+def delete_report(report_id: str, uid: str | None = None, is_admin: bool = False) -> bool:
+    """删除自己的报告；管理员可删除任意报告。"""
+    if not report_id:
+        return False
+    with _report_lock:
+        try:
+            with open(REPORT_INDEX, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return False
+        kept = []
+        removed = None
+        for line in lines:
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                kept.append(line)
+                continue
+            if data.get("id") != report_id:
+                kept.append(line)
+                continue
+            if not is_admin and uid is not None and str(data.get("uid")) != str(uid):
+                return False
+            removed = data
+        if not removed:
+            return False
+        temp = REPORT_INDEX + ".tmp"
+        try:
+            with open(temp, "w", encoding="utf-8") as fh:
+                fh.writelines(kept)
+            os.chmod(temp, 0o600)
+            os.replace(temp, REPORT_INDEX)
+            try:
+                os.unlink(os.path.join(REPORT_DIR, report_id + ".md"))
+            except OSError:
+                pass
+        except OSError:
+            return False
+        return True
+
+
+def _visible_reports(uid: str | None = None, is_admin: bool = False) -> list[dict[str, Any]]:
+    reports: list[dict[str, Any]] = []
+    try:
+        with open(REPORT_INDEX, "r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                if not is_admin and uid is not None and str(data.get("uid")) != str(uid):
+                    continue
+                reports.append(data)
+    except OSError:
+        return []
+    return reports
+
+
+def export_reports(uid: str | None = None, is_admin: bool = False, fmt: str = "json") -> tuple[bytes, str, str]:
+    """导出当前用户可见的全部历史分析记录。"""
+    reports = _visible_reports(uid, is_admin)
+    fmt = fmt if fmt in ("json", "md", "txt") else "json"
+    if fmt == "json":
+        return (json.dumps(reports, ensure_ascii=False, indent=2).encode("utf-8"), "application/json; charset=utf-8", "disk-health-ai-history.json")
+    parts = ["# RAID 阵列健康 AI 历史分析记录\n"]
+    for report in reports:
+        parts.append(
+            f"\n## {report.get('created_at') or ''} · {report.get('provider_label') or ''} / {report.get('model') or ''}\n\n"
+            f"- 范围：{report.get('scope_label') or ''}\n"
+            f"- 磁盘：{report.get('disk_count') or 0} 块\n"
+            f"- 序列号：{'已脱敏' if report.get('serial_redacted') else '完整'}\n\n"
+            f"{(report.get('content') or '').strip()}\n"
+        )
+    ext = "md" if fmt == "md" else "txt"
+    mime = "text/markdown; charset=utf-8" if fmt == "md" else "text/plain; charset=utf-8"
+    return ("\n".join(parts).encode("utf-8"), mime, f"disk-health-ai-history.{ext}")
 
 
 def export_report(report: dict[str, Any], fmt: str) -> tuple[bytes, str, str]:

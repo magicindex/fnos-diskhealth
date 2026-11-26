@@ -2390,3 +2390,26 @@ tr.detail td { padding: 0; background: rgba(6, 11, 20, .55); border-bottom: 1px 
 [data-theme="light"] .vd-zfs { border-color: #c4b5fd; background: #f5f3ff; }
 [data-theme="light"] .vd-zfs .lv { color: #6d28d9; }
 .ctrl-version { margin-left: 1px; font-size: 8.5px; padding: 1px 4px; }
+
+/* AI 历史记录 */
+.ai-history { margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.ai-history-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.ai-history-head h4 { margin: 0; font-size: 12px; }
+.ai-history-count { font-family: var(--mono); font-size: 9.5px; color: var(--muted-2); }
+.ai-history-actions { margin-left: auto; display: flex; gap: 6px; }
+.ai-history-list { display: flex; flex-direction: column; gap: 5px; max-height: 280px; overflow: auto; }
+.ai-history-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--line-soft); border-radius: 7px; background: rgba(255,255,255,.015); font-size: 10px; }
+.ai-history-item input { accent-color: #38bdf8; }
+.ai-history-info { min-width: 0; flex: 1; }
+.ai-history-info b { display: block; font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
+.ai-history-info small { color: var(--muted-2); font-size: 9px; }
+.ai-history-item .btn { padding: 2px 7px; font-size: 9px; }
+.ai-history-empty { padding: 14px 4px; color: var(--muted-2); font-size: 10.5px; }
+.ai-compare { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ai-compare-col { border: 1px solid var(--line-soft); border-radius: 7px; padding: 8px; min-width: 0; }
+.ai-compare-col h5 { margin: 0 0 6px; font-size: 10.5px; color: var(--text); }
+.ai-compare-meta { font-size: 9.5px; color: var(--muted-2); line-height: 1.7; margin-bottom: 6px; }
+.ai-compare-body { max-height: 220px; overflow: auto; font-size: 10px; line-height: 1.65; color: var(--muted); }
+.ai-compare-body h2, .ai-compare-body h3, .ai-compare-body h4 { font-size: 11px; }
+.ai-history-actions .btn { padding: 3px 8px; font-size: 9.5px; }
+@media (max-width: 700px) { .ai-compare { grid-template-columns: 1fr; } .ai-history-item { flex-wrap: wrap; } .ai-history-item .ai-history-info { flex-basis: 100%; } }

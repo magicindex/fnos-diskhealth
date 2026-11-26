@@ -21,7 +21,7 @@
     otherInfoDismissed: localStorage.getItem("disk-health-other-info-dismissed") === "1",
     user: null,
     app: null,
-    ai: { status: null, report: null, busy: false, admin: null },
+    ai: { status: null, report: null, busy: false, admin: null, history: { items: [], selected: new Set(), visible: false } },
     adminDb: null,
     maintenance: null,
     raidGroupColors: new Map(),
@@ -1087,6 +1087,8 @@
         $("#ai-empty").textContent = "选择分析范围并点击「开始分析」。";
       }
     }
+    const save = $("#ai-save");
+    if (save) save.disabled = !report;
     $("#ai-status").className = "ai-status";
     if (configured) {
       $("#ai-status").textContent = `${status.provider_label || status.provider} · ${status.model}`;
@@ -1191,6 +1193,7 @@
       $("#ai-report").innerHTML = aiRenderMarkdown(data.report.content);
       $("#ai-meta").textContent = `${data.report.provider_label} / ${data.report.model} · ${data.report.scope_label} · ${data.report.disk_count} 块 · ${data.report.created_at}`;
       document.querySelectorAll("[data-ai-export]").forEach((button) => { button.disabled = false; });
+      if ($("#ai-save")) { $("#ai-save").disabled = false; $("#ai-save").textContent = "保存记录"; }
       $("#ai-status").className = "ai-status";
       $("#ai-status").textContent = "分析完成";
       toast("AI 分析完成，可一键导出报告");
@@ -1207,6 +1210,159 @@
   function aiExport(format) {
     if (!state.ai.report) return;
     window.location.href = `api/ai/export?id=${encodeURIComponent(state.ai.report.id)}&format=${encodeURIComponent(format)}`;
+  }
+
+  function aiHistoryUpdateCompare() {
+    const count = state.ai.history.selected.size;
+    const button = $("#ai-history-compare");
+    if (button) button.disabled = count !== 2;
+  }
+
+  function aiRenderHistory(items) {
+    const list = $("#ai-history-list");
+    const selected = state.ai.history.selected;
+    $("#ai-history-count").textContent = `共 ${items.length} 条`;
+    if (!items.length) {
+      list.innerHTML = `<div class="ai-history-empty">暂无历史分析记录。</div>`;
+      aiHistoryUpdateCompare();
+      return;
+    }
+    list.innerHTML = items.map((item) => `
+      <div class="ai-history-item">
+        <input type="checkbox" data-ai-select="${esc(item.id)}" ${selected.has(item.id) ? "checked" : ""} aria-label="选择用于对比">
+        <div class="ai-history-info">
+          <b>${esc(item.created_at || "—")}</b>
+          <small>${esc(item.provider_label || "—")} / ${esc(item.model || "—")} · ${esc(item.scope_label || "—")} · ${esc(item.disk_count || 0)} 块</small>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" data-ai-view="${esc(item.id)}">查看</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-ai-export-one="${esc(item.id)}">导出</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-ai-delete="${esc(item.id)}">删除</button>
+      </div>`).join("");
+    list.querySelectorAll("[data-ai-select]").forEach((box) => {
+      box.addEventListener("change", () => {
+        const id = box.dataset.aiSelect;
+        if (box.checked) {
+          if (state.ai.history.selected.size >= 2) { box.checked = false; toast("最多选择 2 条记录进行对比", true); return; }
+          state.ai.history.selected.add(id);
+        } else {
+          state.ai.history.selected.delete(id);
+        }
+        aiHistoryUpdateCompare();
+      });
+    });
+    list.querySelectorAll("[data-ai-view]").forEach((button) => button.addEventListener("click", () => aiHistoryView(button.dataset.aiView)));
+    list.querySelectorAll("[data-ai-export-one]").forEach((button) => button.addEventListener("click", () => { window.location.href = `api/ai/export?id=${encodeURIComponent(button.dataset.aiExportOne)}&format=md`; }));
+    list.querySelectorAll("[data-ai-delete]").forEach((button) => button.addEventListener("click", () => aiHistoryDelete(button.dataset.aiDelete)));
+    aiHistoryUpdateCompare();
+  }
+
+  async function aiHistoryLoad() {
+    try {
+      const res = await request("api/ai/reports");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      state.ai.history.items = data.reports || [];
+      const valid = new Set(state.ai.history.items.map((item) => item.id));
+      state.ai.history.selected.forEach((id) => { if (!valid.has(id)) state.ai.history.selected.delete(id); });
+      aiRenderHistory(state.ai.history.items);
+    } catch (error) {
+      $("#ai-history-list").innerHTML = `<div class="ai-history-empty">读取失败：${esc(error.message)}</div>`;
+    }
+  }
+
+  async function aiHistoryView(id) {
+    try {
+      const res = await request(`api/ai/report?id=${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      state.ai.report = data.report;
+      $("#ai-empty").hidden = true;
+      $("#ai-report").hidden = false;
+      $("#ai-report").innerHTML = aiRenderMarkdown(data.report.content);
+      $("#ai-meta").textContent = `${data.report.provider_label} / ${data.report.model} · ${data.report.scope_label} · ${data.report.disk_count} 块 · ${data.report.created_at}`;
+      document.querySelectorAll("[data-ai-export]").forEach((button) => { button.disabled = false; });
+      $("#ai-save").disabled = false;
+      $("#ai-save").textContent = "已保存";
+      $("#ai-status").className = "ai-status";
+      $("#ai-status").textContent = "已载入历史记录";
+      $("#ai-report").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      toast(`载入历史记录失败：${error.message}`, true);
+    }
+  }
+
+  async function aiHistoryDelete(id) {
+    if (!window.confirm("确定删除这条历史分析记录？")) return;
+    try {
+      const res = await request("api/ai/report/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (state.ai.report?.id === id) {
+        state.ai.report = null;
+        $("#ai-report").hidden = true;
+        $("#ai-empty").hidden = false;
+        $("#ai-empty").textContent = "历史记录已删除。";
+        $("#ai-save").disabled = true;
+      }
+      state.ai.history.selected.delete(id);
+      toast("历史记录已删除");
+      await aiHistoryLoad();
+    } catch (error) {
+      toast(`删除失败：${error.message}`, true);
+    }
+  }
+
+  async function aiHistoryCompare() {
+    const ids = Array.from(state.ai.history.selected);
+    if (ids.length !== 2) { toast("请选择两条历史记录", true); return; }
+    try {
+      const reports = await Promise.all(ids.map(async (id) => {
+        const res = await request(`api/ai/report?id=${encodeURIComponent(id)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data.report;
+      }));
+      $("#ai-compare").hidden = false;
+      $("#ai-compare").innerHTML = reports.map((report) => `
+        <div class="ai-compare-col">
+          <h5>${esc(report.created_at || "—")} · ${esc(report.provider_label || "")}</h5>
+          <div class="ai-compare-meta">${esc(report.model || "—")} · ${esc(report.scope_label || "—")} · ${esc(report.disk_count || 0)} 块</div>
+          <div class="ai-compare-body">${aiRenderMarkdown(report.content || "")}</div>
+        </div>`).join("");
+      $("#ai-compare").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (error) {
+      toast(`对比失败：${error.message}`, true);
+    }
+  }
+
+  async function aiSaveReport() {
+    if (!state.ai.report) return;
+    try {
+      const res = await request("api/ai/report/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: state.ai.report.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      $("#ai-save").textContent = "已保存";
+      toast("分析记录已保存，可在历史记录中查看");
+      await aiHistoryLoad();
+    } catch (error) {
+      toast(`保存失败：${error.message}`, true);
+    }
+  }
+
+  async function aiHistoryToggle() {
+    const panel = $("#ai-history");
+    state.ai.history.visible = !state.ai.history.visible;
+    panel.hidden = !state.ai.history.visible;
+    $("#ai-history-open").textContent = state.ai.history.visible ? "收起历史" : "历史记录";
+    if (state.ai.history.visible) await aiHistoryLoad();
   }
 
   /* ---------------- 后台设置（仅管理员） ---------------- */
@@ -1400,6 +1556,10 @@
     $("#ai-close").addEventListener("click", aiClose);
     $("#ai-modal").addEventListener("click", (event) => { if (event.target === $("#ai-modal")) aiClose(); });
     $("#ai-run").addEventListener("click", aiAnalyze);
+    $("#ai-history-open").addEventListener("click", aiHistoryToggle);
+    $("#ai-history-compare").addEventListener("click", aiHistoryCompare);
+    $("#ai-history-export").addEventListener("click", () => { window.location.href = "api/ai/reports/export?format=json"; });
+    $("#ai-save").addEventListener("click", aiSaveReport);
     document.querySelectorAll("[data-ai-export]").forEach((button) => {
       button.addEventListener("click", () => aiExport(button.dataset.aiExport));
     });

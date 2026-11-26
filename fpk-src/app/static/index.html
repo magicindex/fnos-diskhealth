@@ -254,6 +254,7 @@
           </select>
         </label>
         <button class="btn btn-primary" id="ai-run" type="button">开始分析</button>
+        <button class="btn btn-ghost btn-sm" id="ai-history-open" type="button">历史记录</button>
         <span class="ai-status" id="ai-status"></span>
       </div>
 
@@ -262,7 +263,21 @@
         <div class="ai-report" id="ai-report" hidden></div>
       </div>
 
+      <section class="ai-history" id="ai-history" hidden>
+        <div class="ai-history-head">
+          <h4>历史分析记录</h4>
+          <span class="ai-history-count" id="ai-history-count"></span>
+          <div class="ai-history-actions">
+            <button class="btn btn-ghost btn-sm" id="ai-history-export" type="button">导出全部</button>
+            <button class="btn btn-ghost btn-sm" id="ai-history-compare" type="button" disabled>对比选中</button>
+          </div>
+        </div>
+        <div class="ai-history-list" id="ai-history-list"></div>
+        <div class="ai-compare" id="ai-compare" hidden></div>
+      </section>
+
       <div class="ai-footer">
+        <button class="btn btn-ghost btn-sm" id="ai-save" type="button" disabled>保存记录</button>
         <span class="ai-meta" id="ai-meta"></span>
         <div class="ai-exports">
           <button class="btn btn-ghost btn-sm" data-ai-export="md" type="button" disabled>导出 MD</button>

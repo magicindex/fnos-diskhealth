@@ -33,7 +33,7 @@ GATEWAY_SOCKET = os.environ.get("DISKHEALTH_GATEWAY_SOCKET", "").strip()
 APP_BASE_PATH = os.environ.get("APP_BASE_PATH", "").strip().rstrip("/")
 AUTH_MODE = os.environ.get("AUTH_MODE", "cookie").strip().lower()
 GATEWAY_MODE = AUTH_MODE == "gateway" or bool(GATEWAY_SOCKET)
-APP_VERSION = os.environ.get("APP_VERSION", "1.10.46").strip() or "1.10.46"
+APP_VERSION = os.environ.get("APP_VERSION", "1.10.47").strip() or "1.10.47"
 APP_BUILD = os.environ.get("APP_BUILD", "2026-11-23").strip() or "2026-11-23"
 APP_NAME = "RAID 阵列健康"
 APP_SUBTITLE = "HARDWARE RAID・ARRAY MONITOR"
@@ -512,6 +512,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"report": report})
             if path == "/api/ai/export":
                 return self._api_ai_export(query)
+            if path == "/api/ai/reports/export":
+                user = self.user or {}
+                body, content_type, filename = ai.export_reports(
+                    uid=str(user.get("uid")),
+                    is_admin=bool(user.get("admin")),
+                    fmt=(query.get("format") or ["json"])[0],
+                )
+                self._bytes(body, content_type, extra={"Content-Disposition": f'attachment; filename="{filename}"'})
+                return
             if path == "/api/disks":
                 return self._api_disks(query)
             if path == "/api/refresh":
@@ -679,6 +688,37 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": True, "report": report})
                 except ai.AIError as exc:
                     return self._json({"error": exc.message, "detail": exc.detail}, exc.status)
+            if path == "/api/ai/report/save":
+                if self._require_user(api=True) is None:
+                    return
+                try:
+                    body = self._json_body()
+                    report = ai.get_report(str(body.get("id") or ""))
+                    if not report:
+                        return self._json({"error": "报告不存在"}, 404)
+                    if not self._can_access_report(report):
+                        return self._json({"error": "无权保存该报告"}, 403)
+                    audit.record(self.user or {}, "ai.report.save", target=str(report.get("id")), result="ok")
+                    return self._json({"ok": True, "saved": True})
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+            if path == "/api/ai/report/delete":
+                if self._require_user(api=True) is None:
+                    return
+                try:
+                    body = self._json_body()
+                    report_id = str(body.get("id") or "")
+                    report = ai.get_report(report_id)
+                    if not report:
+                        return self._json({"error": "报告不存在"}, 404)
+                    if not self._can_access_report(report):
+                        return self._json({"error": "无权删除该报告"}, 403)
+                    if not ai.delete_report(report_id, str((self.user or {}).get("uid")), bool((self.user or {}).get("admin"))):
+                        return self._json({"error": "删除失败"}, 500)
+                    audit.record(self.user or {}, "ai.report.delete", target=report_id, result="ok")
+                    return self._json({"ok": True})
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
             if path == "/api/logout":
                 self._clear_cookies()
                 return self._json({"ok": True})

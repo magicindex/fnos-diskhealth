@@ -53,7 +53,7 @@
 - **fnOS 单点登录**：复用 NAS 用户 / 2FA，不建立本地账号密码。
 - **默认只读**：监控页面只执行 `perccli ... show` 与 `smartctl -a`；写操作必须通过管理员安全码控制台显式执行。
 
-## 本次修复（v1.10.46）
+## 本次修复（v1.10.47）
 
 - **ZFS 池识别**：HBA 直通卡下的 ZFS RAIDZ / mirror 池现在会显示在对应控制器卡片内，并标记成员盘的 `ZFS RAIDZ2` 等类型
 - **ZFS 解析修复**：兼容 zpool 转义换行/制表符，支持 `/dev/disk/by-partuuid/*` 成员路径
@@ -70,10 +70,10 @@
 
 ### 方式一：飞牛应用中心（FPK，推荐）
 
-安装包见 GitHub **v1.10.46 Releases** 附件 `diskhealth-v1.10.46.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
+安装包见 GitHub **v1.10.47 Releases** 附件 `diskhealth-v1.10.47.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
 
 ```bash
-fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.47.fpk --volume-id 1 --yes
 ```
 
 安装后从应用中心打开「RAID 阵列健康」。入口是 **`/app/diskhealth`**：fnOS 统一网关先校验登录态，再把请求转发到应用内的 Unix Socket，所以**打开即走 fnOS 登录，不需要在页面里再登录一次**。
@@ -463,7 +463,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 ### 全新安装
 
 ```bash
-fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.47.fpk --volume-id 1 --yes
 ```
 
 安装后从应用中心打开，入口为 `/app/diskhealth`。
@@ -513,7 +513,7 @@ fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
 页脚新增：
 
 - 应用名 `RAID 阵列健康`
-- 当前版本 `v1.10.46`
+- 当前版本 `v1.10.47`
 - `© 2026 cyberzero`
 - 「关于」入口
 
@@ -624,7 +624,7 @@ fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
 | `AI_INSECURE_TLS` | `0` | AI 接口使用自签 HTTPS 时设为 `1` |
 | `AI_DATA_DIR` | 同 `DATA_DIR` | AI 配置与报告目录 |
 | `HISTORY_RETENTION_DAYS` | `180` | SQLite 历史保留天数 |
-| `APP_VERSION` | `1.10.46` | 页脚 / 关于弹窗显示的应用版本 |
+| `APP_VERSION` | `1.10.47` | 页脚 / 关于弹窗显示的应用版本 |
 | `APP_BUILD` | `2026-11-23` | 页脚 / 关于弹窗显示的构建日期 |
 
 `data/` 下会生成：
@@ -639,7 +639,7 @@ fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
 
 ```
 disk-health/
-├── diskhealth-v1.10.46.fpk  # 本地打包产物，不提交仓库；见 Releases
+├── diskhealth-v1.10.47.fpk  # 本地打包产物，不提交仓库；见 Releases
 ├── fpk-src/             # FPK 源：manifest / ui/config / cmd / icons
 │   ├── manifest
 │   ├── app/             # 安装到 ${TRIM_APPDEST} 的代码与静态资源

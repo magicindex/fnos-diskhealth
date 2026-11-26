@@ -9,7 +9,7 @@
       "gatewayPrefix": "/app/diskhealth",
       "gatewaySocket": "app.sock",
       "url": "/app/diskhealth",
-      "allUsers": true
+      "allUsers": false
     }
   }
 }

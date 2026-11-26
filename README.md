@@ -37,6 +37,7 @@
 - **手机端维护检查**：小屏只显示一个「RAID 维护检查」按钮，展开后才显示维护面板和「检测」，收起后恢复单按钮。
 - **手机端筛选面板**：小屏只显示一个「筛选」按钮，展开后显示控制器 / 盘位 / 状态 / 搜索；收起后保留筛选结果和活动条件数量。
 - **手机端顶部菜单**：小屏只保留用户和展开按钮，其余操作收进下拉菜单，点击外部或 Esc 收起。
+- **访问权限**：飞牛应用桌面入口默认「仅管理员」，设备内普通用户不可见。
 - **硬件控制台**：管理员菜单入口，首次创建 3 组单词安全码，通过后可执行硬件 RAID 创建 / 删除 / 扩容 / 初始化 / 重建 / 导入外部配置等写操作。
 - **定位灯 / 重建进度列**：物理盘表格显示定位灯状态和重建进度；定位灯开关仅管理员可用，需输入 `LOCATE` 二次确认，并写入审计日志；其他写操作需通过硬件控制台。
 - **日志中心**：`/logs` 独立页面，合并健康事件、数据导出与审计日志；审计日志标签仅管理员可见，普通用户只能查看事件和导出。
@@ -52,7 +53,7 @@
 - **fnOS 单点登录**：复用 NAS 用户 / 2FA，不建立本地账号密码。
 - **默认只读**：监控页面只执行 `perccli ... show` 与 `smartctl -a`；写操作必须通过管理员安全码控制台显式执行。
 
-## 本次修复（v1.10.45）
+## 本次修复（v1.10.46）
 
 - **ZFS 池识别**：HBA 直通卡下的 ZFS RAIDZ / mirror 池现在会显示在对应控制器卡片内，并标记成员盘的 `ZFS RAIDZ2` 等类型
 - **ZFS 解析修复**：兼容 zpool 转义换行/制表符，支持 `/dev/disk/by-partuuid/*` 成员路径
@@ -69,10 +70,10 @@
 
 ### 方式一：飞牛应用中心（FPK，推荐）
 
-安装包见 GitHub **v1.10.45 Releases** 附件 `diskhealth-v1.10.45.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
+安装包见 GitHub **v1.10.46 Releases** 附件 `diskhealth-v1.10.46.fpk`。在 fnOS 应用中心选择「手动安装」并选中该文件，或使用：
 
 ```bash
-fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
 ```
 
 安装后从应用中心打开「RAID 阵列健康」。入口是 **`/app/diskhealth`**：fnOS 统一网关先校验登录态，再把请求转发到应用内的 Unix Socket，所以**打开即走 fnOS 登录，不需要在页面里再登录一次**。
@@ -462,7 +463,7 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 ### 全新安装
 
 ```bash
-fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
+fnos-cli app install-fpk diskhealth-v1.10.46.fpk --volume-id 1 --yes
 ```
 
 安装后从应用中心打开，入口为 `/app/diskhealth`。
@@ -512,7 +513,7 @@ fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
 页脚新增：
 
 - 应用名 `RAID 阵列健康`
-- 当前版本 `v1.10.45`
+- 当前版本 `v1.10.46`
 - `© 2026 cyberzero`
 - 「关于」入口
 
@@ -623,7 +624,7 @@ fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
 | `AI_INSECURE_TLS` | `0` | AI 接口使用自签 HTTPS 时设为 `1` |
 | `AI_DATA_DIR` | 同 `DATA_DIR` | AI 配置与报告目录 |
 | `HISTORY_RETENTION_DAYS` | `180` | SQLite 历史保留天数 |
-| `APP_VERSION` | `1.10.45` | 页脚 / 关于弹窗显示的应用版本 |
+| `APP_VERSION` | `1.10.46` | 页脚 / 关于弹窗显示的应用版本 |
 | `APP_BUILD` | `2026-11-23` | 页脚 / 关于弹窗显示的构建日期 |
 
 `data/` 下会生成：
@@ -638,7 +639,7 @@ fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
 
 ```
 disk-health/
-├── diskhealth-v1.10.45.fpk  # 本地打包产物，不提交仓库；见 Releases
+├── diskhealth-v1.10.46.fpk  # 本地打包产物，不提交仓库；见 Releases
 ├── fpk-src/             # FPK 源：manifest / ui/config / cmd / icons
 │   ├── manifest
 │   ├── app/             # 安装到 ${TRIM_APPDEST} 的代码与静态资源

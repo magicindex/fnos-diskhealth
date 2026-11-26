@@ -33,7 +33,7 @@ GATEWAY_SOCKET = os.environ.get("DISKHEALTH_GATEWAY_SOCKET", "").strip()
 APP_BASE_PATH = os.environ.get("APP_BASE_PATH", "").strip().rstrip("/")
 AUTH_MODE = os.environ.get("AUTH_MODE", "cookie").strip().lower()
 GATEWAY_MODE = AUTH_MODE == "gateway" or bool(GATEWAY_SOCKET)
-APP_VERSION = os.environ.get("APP_VERSION", "1.10.45").strip() or "1.10.45"
+APP_VERSION = os.environ.get("APP_VERSION", "1.10.46").strip() or "1.10.46"
 APP_BUILD = os.environ.get("APP_BUILD", "2026-11-23").strip() or "2026-11-23"
 APP_NAME = "RAID 阵列健康"
 APP_SUBTITLE = "HARDWARE RAID・ARRAY MONITOR"

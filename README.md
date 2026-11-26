@@ -457,6 +457,33 @@ AI 分析会同时发送控制器参数、背板 / 扩展器、SES 槽位和磁�
 ![亮色主题](docs/light.png)
 
 
+## 安装与升级注意事项
+
+### 全新安装
+
+```bash
+fnos-cli app install-fpk diskhealth-v1.10.45.fpk --volume-id 1 --yes
+```
+
+安装后从应用中心打开，入口为 `/app/diskhealth`。
+
+### 升级
+
+- 优先使用应用中心「手动安装」覆盖升级，不要先卸载应用
+- 卸载后应用数据目录可能被重置，历史趋势和审计日志可能丢失
+- 升级前备份重要数据，并记录当前 RAID / ZFS 状态
+- 保留旧版本安装包，必要时回退
+
+### 安全码
+
+安全码保存在：
+
+```text
+/usr/local/apps/@appconf/diskhealth/console_security.json
+```
+
+应用升级/重装会保留该配置目录。忘记安全码只能由管理员 SSH 删除对应文件并重启应用，不提供在线重置入口。
+
 ## 版权与许可证
 
 - 开发 / 版权：**cyberzero**
